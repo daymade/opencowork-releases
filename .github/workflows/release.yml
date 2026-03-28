@@ -196,7 +196,7 @@ jobs:
           while IFS= read -r -d '' file; do
             rel_path="${file#./}"
             shasum -a 256 "$rel_path" >> SHA256SUMS.txt
-          done < <(find . -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z)
+          done < <(find . -type f ! -path './_internal/*' ! -name 'SHA256SUMS.txt' -print0 | sort -z)
 
       - name: Generate fallback release metadata
         env:
@@ -210,8 +210,10 @@ jobs:
           require "time"
 
           out_dir = ENV.fetch("RELEASE_DIST")
-          metadata_path = File.join(out_dir, "release-metadata.json")
-          notes_path = File.join(out_dir, "release-notes.md")
+          internal_dir = File.join(out_dir, "_internal")
+          Dir.mkdir(internal_dir) unless Dir.exist?(internal_dir)
+          metadata_path = File.join(internal_dir, "release-metadata.json")
+          notes_path = File.join(internal_dir, "release-notes.md")
           checksum_path = File.join(out_dir, "SHA256SUMS.txt")
 
           checksum_map = {}
@@ -226,7 +228,7 @@ jobs:
           files = Dir.glob(File.join(out_dir, "**", "*"), File::FNM_DOTMATCH)
             .select { |path| File.file?(path) }
             .map { |path| path.delete_prefix("#{out_dir}/") }
-            .reject { |path| [".", "..", "release-notes.md"].include?(path) }
+            .reject { |path| [".", "..", "release-notes.md"].include?(path) || path.start_with?("_internal/") }
             .sort
 
           unless File.exist?(metadata_path)
@@ -276,6 +278,10 @@ jobs:
           tag_name: v${{ needs.prepare.outputs.version }}
           generate_release_notes: false
           prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
-          body_path: ${{ env.RELEASE_DIST }}/release-notes.md
+          body_path: ${{ env.RELEASE_DIST }}/_internal/release-notes.md
           files: |
-            ${{ env.RELEASE_DIST }}/*
+            ${{ env.RELEASE_DIST }}/OpenCoWork-*.dmg
+            ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip
+            ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip.blockmap
+            ${{ env.RELEASE_DIST }}/latest-mac.yml
+            ${{ env.RELEASE_DIST }}/SHA256SUMS.txt
