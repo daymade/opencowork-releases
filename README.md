@@ -32,6 +32,24 @@ For most users, download the latest **`.dmg`** file from the [Releases](https://
 
 If you also see `*.zip`, `latest-mac.yml`, or `*.blockmap` files on the release page, those are for the app's in-app auto-update flow. They are not the recommended files for a normal manual install.
 
+## Release Channels
+
+| Channel | Tag Pattern | Update Server |
+|---|---|---|
+| Stable | `vX.Y.Z` | `https://updates.openco.work` |
+| Beta | `vX.Y.Z-beta.N` | `https://updates-beta.openco.work` |
+
+`Beta` releases should be published as GitHub pre-releases.
+
+## Auto-Update
+
+OpenCoWork desktop uses a branded update feed instead of checking GitHub Releases directly.
+
+- Stable channel feed: `https://updates.openco.work/update/darwin/<current-version>`
+- Beta channel feed: `https://updates-beta.openco.work/update/darwin/<current-version>`
+- `latest-mac.yml` and the ZIP asset are consumed by the in-app updater
+- The DMG remains the recommended manual install path
+
 ## What This Repo Is
 
 This repository is for public release downloads and issue tracking only. OpenCoWork source code is maintained separately.
