@@ -255,18 +255,17 @@ jobs:
             lines = []
             lines << "## OpenCoWork v#{ENV.fetch("RELEASE_VERSION")}"
             lines << ""
-            lines << "Standalone OpenCoWork release assembled from the private source repository."
+            lines << "macOS Apple Silicon release."
             lines << ""
-            lines << "- Source repository: `#{ENV.fetch("SOURCE_REPOSITORY")}`"
-            lines << "- Source ref: `#{ENV.fetch("RELEASE_REF")}`"
-            lines << "- Source commit: `#{ENV.fetch("RELEASE_HEAD_SHA")}`"
-            lines << "- Checksums: `SHA256SUMS.txt`"
+            lines << "### Install"
             lines << ""
-            lines << "### Files"
-            files.each do |path|
-              sha = checksum_map[path]
-              lines << "- `#{path}`#{sha ? " (`#{sha}`)" : ""}"
-            end
+            lines << "- Download `OpenCoWork-#{ENV.fetch("RELEASE_VERSION")}-arm64.dmg`"
+            lines << "- Open the DMG and drag OpenCoWork into `Applications`"
+            lines << ""
+            lines << "### Update"
+            lines << ""
+            lines << "- `OpenCoWork-#{ENV.fetch("RELEASE_VERSION")}-arm64.zip` and `latest-mac.yml` are for in-app auto-update"
+            lines << "- Most users only need the DMG"
 
             File.write(notes_path, lines.join("\n") + "\n")
           end
