@@ -1,0 +1,281 @@
+name: Release
+
+on:
+  repository_dispatch:
+    types: [release]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (tag or branch) in the private source repo"
+        required: true
+      head_sha:
+        description: "Exact source commit SHA to assemble"
+        required: true
+      version:
+        description: "Version without leading v (for example 0.1.0 or 0.1.0-beta.1)"
+        required: true
+      source_repository:
+        description: "Private OpenCoWork source repository"
+        required: false
+        default: "daymade/opencowork"
+      release_entrypoint:
+        description: "Assembly script path inside the private source repository"
+        required: false
+        default: "scripts/release/assemble-public-release.sh"
+
+concurrency:
+  group: release-${{ github.event.client_payload.version || inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.params.outputs.ref }}
+      head_sha: ${{ steps.params.outputs.head_sha }}
+      version: ${{ steps.params.outputs.version }}
+      source_repository: ${{ steps.params.outputs.source_repository }}
+      release_entrypoint: ${{ steps.params.outputs.release_entrypoint }}
+    steps:
+      - name: Resolve release parameters
+        id: params
+        env:
+          DEFAULT_SOURCE_REPOSITORY: daymade/opencowork
+          DEFAULT_RELEASE_ENTRYPOINT: scripts/release/assemble-public-release.sh
+          PAYLOAD_HEAD_SHA_SNAKE: ${{ github.event.client_payload.head_sha }}
+          PAYLOAD_HEAD_SHA_CAMEL: ${{ github.event.client_payload.headSha }}
+          PAYLOAD_SOURCE_REPOSITORY_SNAKE: ${{ github.event.client_payload.source_repository }}
+          PAYLOAD_SOURCE_REPOSITORY_CAMEL: ${{ github.event.client_payload.sourceRepository }}
+          PAYLOAD_SOURCE_REPOSITORY_SHORT: ${{ github.event.client_payload.sourceRepo }}
+          PAYLOAD_RELEASE_ENTRYPOINT_SNAKE: ${{ github.event.client_payload.release_entrypoint }}
+          PAYLOAD_RELEASE_ENTRYPOINT_CAMEL: ${{ github.event.client_payload.releaseEntrypoint }}
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            REF="${{ github.event.client_payload.ref }}"
+            HEAD_SHA="${PAYLOAD_HEAD_SHA_SNAKE:-$PAYLOAD_HEAD_SHA_CAMEL}"
+            VERSION="${{ github.event.client_payload.version }}"
+            SOURCE_REPOSITORY="${PAYLOAD_SOURCE_REPOSITORY_SNAKE:-$PAYLOAD_SOURCE_REPOSITORY_CAMEL}"
+            SOURCE_REPOSITORY="${SOURCE_REPOSITORY:-$PAYLOAD_SOURCE_REPOSITORY_SHORT}"
+            RELEASE_ENTRYPOINT="${PAYLOAD_RELEASE_ENTRYPOINT_SNAKE:-$PAYLOAD_RELEASE_ENTRYPOINT_CAMEL}"
+          else
+            REF="${{ inputs.ref }}"
+            HEAD_SHA="${{ inputs.head_sha }}"
+            VERSION="${{ inputs.version }}"
+            SOURCE_REPOSITORY="${{ inputs.source_repository }}"
+            RELEASE_ENTRYPOINT="${{ inputs.release_entrypoint }}"
+          fi
+
+          SOURCE_REPOSITORY="${SOURCE_REPOSITORY:-$DEFAULT_SOURCE_REPOSITORY}"
+          RELEASE_ENTRYPOINT="${RELEASE_ENTRYPOINT:-$DEFAULT_RELEASE_ENTRYPOINT}"
+
+          if [ -z "$REF" ] || [ -z "$HEAD_SHA" ] || [ -z "$VERSION" ]; then
+            echo "::error::ref, head_sha, and version are required."
+            exit 1
+          fi
+
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_repository=$SOURCE_REPOSITORY" >> "$GITHUB_OUTPUT"
+          echo "release_entrypoint=$RELEASE_ENTRYPOINT" >> "$GITHUB_OUTPUT"
+
+  assemble-release-assets:
+    needs: prepare
+    runs-on: macos-14
+    timeout-minutes: 240
+    env:
+      RELEASE_DIST: ${{ runner.temp }}/opencowork-release-dist
+    steps:
+      - name: Checkout private source repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.prepare.outputs.source_repository }}
+          token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.head_sha }}
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Verify checked out commit
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_SHA="${{ needs.prepare.outputs.head_sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Checked out commit $ACTUAL_SHA does not match requested head_sha $EXPECTED_SHA"
+            exit 1
+          fi
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron
+          key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      - name: Prepare artifact directory
+        run: mkdir -p "$RELEASE_DIST"
+
+      - name: Run private release assembly contract
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_REF: ${{ needs.prepare.outputs.ref }}
+          RELEASE_HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
+          RELEASE_ENTRYPOINT: ${{ needs.prepare.outputs.release_entrypoint }}
+          GH_TOKEN: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
+          OPENCOWORK_SOURCE_REPO: ${{ needs.prepare.outputs.source_repository }}
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          ELECTRON_CACHE: ${{ vars.ELECTRON_CACHE }}
+          ELECTRON_DOWNLOAD_URL: ${{ vars.ELECTRON_DOWNLOAD_URL }}
+          ELECTRON_MIRROR: ${{ vars.ELECTRON_MIRROR }}
+          ELECTRON_CUSTOM_DIR: ${{ vars.ELECTRON_CUSTOM_DIR }}
+          ELECTRON_CUSTOM_FILENAME: ${{ vars.ELECTRON_CUSTOM_FILENAME }}
+        run: |
+          ENTRYPOINT="$GITHUB_WORKSPACE/$RELEASE_ENTRYPOINT"
+          if [ ! -f "$ENTRYPOINT" ]; then
+            echo "::error::Private release entrypoint not found: $RELEASE_ENTRYPOINT"
+            echo "::error::Implement the contract in the private source repository before using this public release workflow."
+            exit 1
+          fi
+
+          chmod +x "$ENTRYPOINT"
+          "$ENTRYPOINT" \
+            --version "$RELEASE_VERSION" \
+            --ref "$RELEASE_REF" \
+            --head-sha "$RELEASE_HEAD_SHA" \
+            --output-dir "$RELEASE_DIST"
+
+      - name: Verify release outputs
+        run: |
+          if [ ! -d "$RELEASE_DIST" ]; then
+            echo "::error::Release output directory missing: $RELEASE_DIST"
+            exit 1
+          fi
+
+          echo "Collected files:"
+          find "$RELEASE_DIST" -type f | sort
+
+          INSTALLER_COUNT="$(find "$RELEASE_DIST" -type f \( \
+            -name '*.dmg' -o \
+            -name '*.zip' -o \
+            -name '*.tar.gz' -o \
+            -name '*.exe' -o \
+            -name '*.msi' -o \
+            -name '*.AppImage' -o \
+            -name '*.deb' -o \
+            -name '*.rpm' \
+          \) | wc -l | tr -d ' ')"
+
+          if [ "$INSTALLER_COUNT" = "0" ]; then
+            echo "::error::No standalone installer artifacts were produced."
+            echo "::error::Expected at least one file such as .dmg, .zip, .exe, .msi, .AppImage, .deb, or .rpm."
+            exit 1
+          fi
+
+      - name: Generate checksums
+        run: |
+          cd "$RELEASE_DIST"
+          rm -f SHA256SUMS.txt
+          while IFS= read -r -d '' file; do
+            rel_path="${file#./}"
+            shasum -a 256 "$rel_path" >> SHA256SUMS.txt
+          done < <(find . -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z)
+
+      - name: Generate fallback release metadata
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_REF: ${{ needs.prepare.outputs.ref }}
+          RELEASE_HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
+          SOURCE_REPOSITORY: ${{ needs.prepare.outputs.source_repository }}
+        run: |
+          ruby <<'RUBY'
+          require "json"
+          require "time"
+
+          out_dir = ENV.fetch("RELEASE_DIST")
+          metadata_path = File.join(out_dir, "release-metadata.json")
+          notes_path = File.join(out_dir, "release-notes.md")
+          checksum_path = File.join(out_dir, "SHA256SUMS.txt")
+
+          checksum_map = {}
+          if File.exist?(checksum_path)
+            File.readlines(checksum_path, chomp: true).each do |line|
+              next if line.strip.empty?
+              sha, file = line.split(/\s+/, 2)
+              checksum_map[file.sub(/\A\*/, "")] = sha
+            end
+          end
+
+          files = Dir.glob(File.join(out_dir, "**", "*"), File::FNM_DOTMATCH)
+            .select { |path| File.file?(path) }
+            .map { |path| path.delete_prefix("#{out_dir}/") }
+            .reject { |path| [".", "..", "release-notes.md"].include?(path) }
+            .sort
+
+          unless File.exist?(metadata_path)
+            metadata = {
+              product_name: "OpenCoWork",
+              version: ENV.fetch("RELEASE_VERSION"),
+              tag_name: "v#{ENV.fetch("RELEASE_VERSION")}",
+              source_repository: ENV.fetch("SOURCE_REPOSITORY"),
+              source_ref: ENV.fetch("RELEASE_REF"),
+              source_head_sha: ENV.fetch("RELEASE_HEAD_SHA"),
+              generated_at: Time.now.utc.iso8601,
+              files: files.map { |path|
+                {
+                  path: path,
+                  sha256: checksum_map[path]
+                }.compact
+              }
+            }
+
+            File.write(metadata_path, JSON.pretty_generate(metadata) + "\n")
+          end
+
+          unless File.exist?(notes_path)
+            lines = []
+            lines << "## OpenCoWork v#{ENV.fetch("RELEASE_VERSION")}"
+            lines << ""
+            lines << "Standalone OpenCoWork release assembled from the private source repository."
+            lines << ""
+            lines << "- Source repository: `#{ENV.fetch("SOURCE_REPOSITORY")}`"
+            lines << "- Source ref: `#{ENV.fetch("RELEASE_REF")}`"
+            lines << "- Source commit: `#{ENV.fetch("RELEASE_HEAD_SHA")}`"
+            lines << "- Checksums: `SHA256SUMS.txt`"
+            lines << ""
+            lines << "### Files"
+            files.each do |path|
+              sha = checksum_map[path]
+              lines << "- `#{path}`#{sha ? " (`#{sha}`)" : ""}"
+            end
+
+            File.write(notes_path, lines.join("\n") + "\n")
+          end
+          RUBY
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.prepare.outputs.version }}
+          generate_release_notes: false
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          body_path: ${{ env.RELEASE_DIST }}/release-notes.md
+          files: |
+            ${{ env.RELEASE_DIST }}/*
