@@ -87,7 +87,7 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 240
     env:
-      RELEASE_DIST: ${{ runner.temp }}/opencowork-release-dist
+      RELEASE_DIST: /tmp/opencowork-release-dist
     steps:
       - name: Checkout private source repository
         uses: actions/checkout@v4
