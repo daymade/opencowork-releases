@@ -18,8 +18,9 @@ OpenCoWork is currently available for:
 
 - macOS
 - Apple Silicon only (`arm64`, including M-series Macs)
+- Windows (`x64`) once the Windows release lane is published
 
-Intel Mac, Windows, and Linux builds are not published yet.
+Intel Mac and Linux builds are not published yet.
 
 ## Download Guide
 
@@ -30,7 +31,15 @@ For most users, download the latest **`.dmg`** file from the [Releases](https://
 3. Drag `OpenCoWork.app` into `Applications`
 4. Launch OpenCoWork
 
-If you also see `*.zip`, `latest-mac.yml`, or `*.blockmap` files on the release page, those are for the app's in-app auto-update flow. They are not the recommended files for a normal manual install.
+If you also see `*.zip`, `*-mac.yml`, or `*.blockmap` files on the release page, those are for the app's in-app auto-update flow. They are not the recommended files for a normal manual install.
+
+Windows releases may include:
+
+1. `OpenCoWork-...-x64.exe`
+2. `OpenCoWork-...-x64.zip`
+3. `latest.yml`
+
+For normal Windows installation, use the `.exe` installer.
 
 ## Release Channels
 
@@ -45,10 +54,11 @@ If you also see `*.zip`, `latest-mac.yml`, or `*.blockmap` files on the release 
 
 OpenCoWork desktop uses a branded update feed instead of checking GitHub Releases directly.
 
-- Stable channel feed: `https://updates.openco.work/update/darwin/<current-version>`
-- Beta channel feed: `https://updates-beta.openco.work/update/darwin/<current-version>`
-- `latest-mac.yml` and the ZIP asset are consumed by the in-app updater
+- Stable channel feed root: `https://updates.openco.work/generic/`
+- Beta channel feed root: `https://updates-beta.openco.work/generic/`
+- Generated `*-mac.yml` metadata and the ZIP asset are consumed by the macOS in-app updater
 - The DMG remains the recommended manual install path
+- Windows updater metadata uses `latest.yml`, which resolves against the branded update domain for the active channel
 
 ## What This Repo Is
 

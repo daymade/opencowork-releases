@@ -91,7 +91,6 @@ jobs:
     timeout-minutes: 240
     env:
       RELEASE_DIST: /tmp/opencowork-release-dist
-      RUNTIME_BUNDLE_DIST: /tmp/opencowork-runtime-dist
     steps:
       - name: Checkout private source repository
         uses: actions/checkout@v6
@@ -100,15 +99,6 @@ jobs:
           token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
           ref: ${{ needs.prepare.outputs.ref }}
           fetch-depth: 0
-
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: Setup Python
-        run: uv python install 3.12
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
@@ -142,22 +132,7 @@ jobs:
             ${{ runner.os }}-electron-
 
       - name: Prepare artifact directory
-        run: mkdir -p "$RELEASE_DIST" "$RUNTIME_BUNDLE_DIST"
-
-      - name: Install Python dependencies
-        run: uv sync --all-extras
-
-      - name: Build runtime bundle inside public release job
-        env:
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          RELEASE_HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
-          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
-          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-        run: |
-          bash scripts/release/build-runtime-bundle.sh \
-            --version "$RELEASE_VERSION" \
-            --head-sha "$RELEASE_HEAD_SHA" \
-            --output-dir "$RUNTIME_BUNDLE_DIST"
+        run: mkdir -p "$RELEASE_DIST"
 
       - name: Run private release assembly contract (submit notarization stage)
         env:
@@ -172,8 +147,6 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          OPENCOWORK_RUNTIME_BUNDLE_LOCAL_FILE: ${{ env.RUNTIME_BUNDLE_DIST }}/opencowork-runtime-${{ needs.prepare.outputs.version }}-darwin-arm64.tar.gz
-          OPENCOWORK_RUNTIME_BUNDLE_LOCAL_SHA_FILE: ${{ env.RUNTIME_BUNDLE_DIST }}/opencowork-runtime-${{ needs.prepare.outputs.version }}-darwin-arm64.tar.gz.sha256
           ELECTRON_CACHE: ${{ vars.ELECTRON_CACHE }}
           ELECTRON_DOWNLOAD_URL: ${{ vars.ELECTRON_DOWNLOAD_URL }}
           ELECTRON_MIRROR: ${{ vars.ELECTRON_MIRROR }}
@@ -212,6 +185,289 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ~/Library/Caches/electron
+          key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
+
+  release:
+    needs: [prepare, resume-release-assets, build-windows-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_DIR: ${{ runner.temp }}/opencowork-release
+      INTERNAL_DIR: ${{ runner.temp }}/opencowork-release/_internal
+    steps:
+      - name: Checkout public release repository
+        uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Aggregate release payload
+        run: |
+          bash scripts/aggregate-release.sh \
+            --artifacts-dir "$GITHUB_WORKSPACE/artifacts" \
+            --release-dir "$RELEASE_DIR" \
+            --internal-dir "$INTERNAL_DIR" \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --source-repository "${{ needs.prepare.outputs.source_repository }}" \
+            --source-ref "${{ needs.prepare.outputs.ref }}" \
+            --source-head-sha "${{ needs.prepare.outputs.head_sha }}"
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_REF: ${{ needs.prepare.outputs.ref }}
+          RELEASE_HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
+          SOURCE_REPOSITORY: ${{ needs.prepare.outputs.source_repository }}
+
+      - name: Verify aggregated release assets
+        run: |
+          bash scripts/verify-release-assets.sh \
+            --release-dir "$RELEASE_DIR" \
+            --metadata "$RELEASE_DIR/release-metadata.json"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.prepare.outputs.version }}
+          generate_release_notes: false
+          draft: true
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          body_path: ${{ env.INTERNAL_DIR }}/release-notes.md
+          files: |
+            ${{ env.RELEASE_DIR }}/OpenCoWork-*.dmg
+            ${{ env.RELEASE_DIR }}/OpenCoWork-*.zip
+            ${{ env.RELEASE_DIR }}/OpenCoWork-*.blockmap
+            ${{ env.RELEASE_DIR }}/OpenCoWork-*.exe
+            ${{ env.RELEASE_DIR }}/*.yml
+            ${{ env.RELEASE_DIR }}/SHA256SUMS.txt
+            ${{ env.RELEASE_DIR }}/release-metadata.json
+
+  verify-published-macos:
+    needs: [prepare, release]
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - name: Verify published DMG from GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          VERIFY_DIR="$(mktemp -d /tmp/opencowork-published-verify.XXXXXX)"
+          MOUNT_DIR="$(mktemp -d /tmp/opencowork-published-dmg.XXXXXX)"
+
+          cleanup() {
+            hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1 || true
+            rm -rf "$VERIFY_DIR"
+            rmdir "$MOUNT_DIR" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          gh release download "v$RELEASE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "OpenCoWork-*.dmg" \
+            --dir "$VERIFY_DIR" \
+            --clobber
+
+          DMG_FILE="$(find "$VERIFY_DIR" -name 'OpenCoWork-*.dmg' | head -1)"
+          if [ -z "$DMG_FILE" ]; then
+            echo "::error::Published DMG not found after release download"
+            exit 1
+          fi
+
+          xcrun stapler validate "$DMG_FILE"
+          hdiutil attach "$DMG_FILE" -mountpoint "$MOUNT_DIR" -nobrowse -readonly >/dev/null
+
+          APP_PATH="$MOUNT_DIR/OpenCoWork.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::OpenCoWork.app not found inside published DMG"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict "$APP_PATH"
+          CODESIGN_INFO="$(codesign -dvv "$APP_PATH" 2>&1 || true)"
+          printf '%s\n' "$CODESIGN_INFO" | grep -q "Developer ID Application"
+          printf '%s\n' "$CODESIGN_INFO" | grep -q "runtime"
+          spctl --assess --type execute --verbose=2 "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+
+  verify-published-windows:
+    needs: [prepare, release]
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout private source repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.prepare.outputs.source_repository }}
+          token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Verify checked out commit
+        shell: bash
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_SHA="${{ needs.prepare.outputs.head_sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Checked out commit $ACTUAL_SHA does not match requested head_sha $EXPECTED_SHA"
+            exit 1
+          fi
+
+      - name: Download published Windows assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          VERIFY_DIR="${RUNNER_TEMP}/opencowork-published-windows"
+          mkdir -p "$VERIFY_DIR"
+          gh release download "v$RELEASE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "OpenCoWork-*.exe" \
+            --pattern "OpenCoWork-*.zip" \
+            --pattern "OpenCoWork-*.blockmap" \
+            --pattern "*.yml" \
+            --dir "$VERIFY_DIR" \
+            --clobber
+          echo "VERIFY_DIR=$VERIFY_DIR" >> "$GITHUB_ENV"
+
+      - name: Run published Windows installer smoke
+        shell: bash
+        run: |
+          node scripts/run-packaged-installer-smoke-windows.cjs --release-dir "$VERIFY_DIR"
+
+  publish-release:
+    needs: [prepare, release, verify-published-macos, verify-published-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish verified draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          RELEASE_ID="$(gh release view "v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.databaseId')"
+          if [ -z "$RELEASE_ID" ]; then
+            echo "::error::Unable to resolve draft release id for v$RELEASE_VERSION"
+            exit 1
+          fi
+          gh api \
+            --method PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false >/dev/null
+
+  build-windows-release:
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 240
+    env:
+      RELEASE_DIST: ${{ runner.temp }}/opencowork-release-dist
+      OPENCOWORK_RELEASE_PLATFORM: win32
+      OPENCOWORK_RELEASE_ARCH: x64
+    steps:
+      - name: Checkout private source repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.prepare.outputs.source_repository }}
+          token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Restore Electron downloads cache
+        id: electron-cache-restore
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/electron
+          key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      - name: Verify checked out commit
+        shell: bash
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_SHA="${{ needs.prepare.outputs.head_sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Checked out commit $ACTUAL_SHA does not match requested head_sha $EXPECTED_SHA"
+            exit 1
+          fi
+
+      - name: Prepare artifact directories
+        shell: bash
+        run: |
+          mkdir -p "$RELEASE_DIST"
+
+      - name: Assemble Windows desktop artifacts via private release entrypoint
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_REF: ${{ needs.prepare.outputs.ref }}
+          RELEASE_HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
+          RELEASE_ENTRYPOINT: ${{ needs.prepare.outputs.release_entrypoint }}
+          GH_TOKEN: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
+          OPENCOWORK_SOURCE_REPO: ${{ needs.prepare.outputs.source_repository }}
+        run: |
+          ENTRYPOINT="$GITHUB_WORKSPACE/$RELEASE_ENTRYPOINT"
+          if [ ! -f "$ENTRYPOINT" ]; then
+            echo "::error::Private release entrypoint not found: $RELEASE_ENTRYPOINT"
+            exit 1
+          fi
+
+          chmod +x "$ENTRYPOINT"
+          "$ENTRYPOINT" \
+            --version "$RELEASE_VERSION" \
+            --ref "$RELEASE_REF" \
+            --head-sha "$RELEASE_HEAD_SHA" \
+            --mode full \
+            --output-dir "$RELEASE_DIST"
+
+      - name: Run Windows installer smoke
+        shell: bash
+        run: |
+          node scripts/run-packaged-installer-smoke-windows.cjs --release-dir "$RELEASE_DIST"
+
+      - name: Upload Windows workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-windows-x64
+          retention-days: 7
+          path: |
+            ${{ env.RELEASE_DIST }}/OpenCoWork-*.exe
+            ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip
+            ${{ env.RELEASE_DIST }}/OpenCoWork-*.blockmap
+            ${{ env.RELEASE_DIST }}/*.yml
+            ${{ env.RELEASE_DIST }}/_internal/release-metadata.json
+            ${{ env.RELEASE_DIST }}/_internal/release-notes.md
+
+      - name: Save Electron downloads cache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/electron
           key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
 
   resume-release-assets:
@@ -407,71 +663,25 @@ jobs:
             lines << ""
             lines << "### Update"
             lines << ""
-            lines << "- `OpenCoWork-#{ENV.fetch("RELEASE_VERSION")}-arm64.zip` and `latest-mac.yml` are for in-app auto-update"
+            lines << "- `OpenCoWork-#{ENV.fetch("RELEASE_VERSION")}-arm64.zip` and generated `*-mac.yml` metadata are for in-app auto-update"
             lines << "- Most users only need the DMG"
 
             File.write(notes_path, lines.join("\n") + "\n")
           end
           RUBY
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload macOS workflow artifact
+        uses: actions/upload-artifact@v7
         with:
-          tag_name: v${{ needs.prepare.outputs.version }}
-          generate_release_notes: false
-          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
-          body_path: ${{ env.RELEASE_DIST }}/_internal/release-notes.md
-          files: |
+          name: release-macos-arm64
+          retention-days: 7
+          path: |
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.dmg
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip.blockmap
-            ${{ env.RELEASE_DIST }}/latest-mac.yml
-            ${{ env.RELEASE_DIST }}/SHA256SUMS.txt
-
-      - name: Verify published DMG from GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          VERIFY_DIR="$(mktemp -d /tmp/opencowork-published-verify.XXXXXX)"
-          MOUNT_DIR="$(mktemp -d /tmp/opencowork-published-dmg.XXXXXX)"
-
-          cleanup() {
-            hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1 || true
-            rm -rf "$VERIFY_DIR"
-            rmdir "$MOUNT_DIR" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          gh release download "v$RELEASE_VERSION" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "OpenCoWork-*.dmg" \
-            --dir "$VERIFY_DIR" \
-            --clobber
-
-          DMG_FILE="$(find "$VERIFY_DIR" -name 'OpenCoWork-*.dmg' | head -1)"
-          if [ -z "$DMG_FILE" ]; then
-            echo "::error::Published DMG not found after release download"
-            exit 1
-          fi
-
-          xcrun stapler validate "$DMG_FILE"
-          hdiutil attach "$DMG_FILE" -mountpoint "$MOUNT_DIR" -nobrowse -readonly >/dev/null
-
-          APP_PATH="$MOUNT_DIR/OpenCoWork.app"
-          if [ ! -d "$APP_PATH" ]; then
-            echo "::error::OpenCoWork.app not found inside published DMG"
-            exit 1
-          fi
-
-          codesign --verify --deep --strict "$APP_PATH"
-          CODESIGN_INFO="$(codesign -dvv "$APP_PATH" 2>&1 || true)"
-          printf '%s\n' "$CODESIGN_INFO" | grep -q "Developer ID Application"
-          printf '%s\n' "$CODESIGN_INFO" | grep -q "runtime"
-          spctl --assess --type execute --verbose=2 "$APP_PATH"
-          xcrun stapler validate "$APP_PATH"
+            ${{ env.RELEASE_DIST }}/*.yml
+            ${{ env.RELEASE_DIST }}/_internal/release-metadata.json
+            ${{ env.RELEASE_DIST }}/_internal/release-notes.md
 
       - name: Save Electron downloads cache
         if: always()
