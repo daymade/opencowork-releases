@@ -282,7 +282,8 @@ jobs:
             ${{ env.RELEASE_DIR }}/OpenCoWork-*.zip
             ${{ env.RELEASE_DIR }}/OpenCoWork-*.blockmap
             ${{ env.RELEASE_DIR }}/OpenCoWork-*.exe
-            ${{ env.RELEASE_DIR }}/*.yml
+            ${{ env.RELEASE_DIR }}/latest.yml
+            ${{ env.RELEASE_DIR }}/latest-mac.yml
             ${{ env.RELEASE_DIR }}/SHA256SUMS.txt
             ${{ env.RELEASE_DIR }}/release-metadata.json
 
@@ -377,7 +378,7 @@ jobs:
             --pattern "OpenCoWork-*.exe" \
             --pattern "OpenCoWork-*.zip" \
             --pattern "OpenCoWork-*.blockmap" \
-            --pattern "*.yml" \
+            --pattern "latest.yml" \
             --dir "$VERIFY_DIR" \
             --clobber
           echo "VERIFY_DIR=$VERIFY_DIR" >> "$GITHUB_ENV"
@@ -533,7 +534,7 @@ jobs:
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.exe
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.blockmap
-            ${{ env.RELEASE_DIST }}/*.yml
+            ${{ env.RELEASE_DIST }}/latest.yml
             ${{ env.RELEASE_DIST }}/_internal/release-metadata.json
             ${{ env.RELEASE_DIST }}/_internal/release-notes.md
 
@@ -754,7 +755,7 @@ jobs:
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.dmg
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip.blockmap
-            ${{ env.RELEASE_DIST }}/*.yml
+            ${{ env.RELEASE_DIST }}/latest-mac.yml
             ${{ env.RELEASE_DIST }}/_internal/release-metadata.json
             ${{ env.RELEASE_DIST }}/_internal/release-notes.md
 

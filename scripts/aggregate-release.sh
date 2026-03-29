@@ -140,8 +140,8 @@ end
 lines << ''
 lines << '### Update'
 lines << ''
-mac_update_metadata = files.select { |name| name.end_with?('-mac.yml') }.sort
-windows_update_metadata = files.select { |name| name.end_with?('.yml') && !name.end_with?('-mac.yml') }.sort
+mac_update_metadata = files.select { |name| name == 'latest-mac.yml' }.sort
+windows_update_metadata = files.select { |name| name == 'latest.yml' }.sort
 mac_zip_assets = files.select { |name| name.match?(/^OpenCoWork-.*\.zip$/) && name.include?('-arm64') }.sort
 windows_zip_assets = files.select { |name| name.match?(/^OpenCoWork-.*\.zip$/) && name.include?('-x64') }.sort
 windows_installers = files.select { |name| name.end_with?('.exe') }.sort
