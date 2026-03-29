@@ -88,14 +88,24 @@ jobs:
     timeout-minutes: 240
     env:
       RELEASE_DIST: /tmp/opencowork-release-dist
+      RUNTIME_BUNDLE_DIST: /tmp/opencowork-runtime-dist
     steps:
       - name: Checkout private source repository
         uses: actions/checkout@v4
         with:
           repository: ${{ needs.prepare.outputs.source_repository }}
           token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.head_sha }}
-          fetch-depth: 1
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Setup Python
+        run: uv python install 3.12
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -127,7 +137,22 @@ jobs:
             ${{ runner.os }}-electron-
 
       - name: Prepare artifact directory
-        run: mkdir -p "$RELEASE_DIST"
+        run: mkdir -p "$RELEASE_DIST" "$RUNTIME_BUNDLE_DIST"
+
+      - name: Install Python dependencies
+        run: uv sync --all-extras
+
+      - name: Build runtime bundle inside public release job
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          bash scripts/release/build-runtime-bundle.sh \
+            --version "$RELEASE_VERSION" \
+            --head-sha "$RELEASE_HEAD_SHA" \
+            --output-dir "$RUNTIME_BUNDLE_DIST"
 
       - name: Run private release assembly contract
         env:
@@ -142,6 +167,8 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          OPENCOWORK_RUNTIME_BUNDLE_LOCAL_FILE: ${{ env.RUNTIME_BUNDLE_DIST }}/opencowork-runtime-${{ needs.prepare.outputs.version }}-darwin-arm64.tar.gz
+          OPENCOWORK_RUNTIME_BUNDLE_LOCAL_SHA_FILE: ${{ env.RUNTIME_BUNDLE_DIST }}/opencowork-runtime-${{ needs.prepare.outputs.version }}-darwin-arm64.tar.gz.sha256
           ELECTRON_CACHE: ${{ vars.ELECTRON_CACHE }}
           ELECTRON_DOWNLOAD_URL: ${{ vars.ELECTRON_DOWNLOAD_URL }}
           ELECTRON_MIRROR: ${{ vars.ELECTRON_MIRROR }}
