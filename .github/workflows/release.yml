@@ -236,8 +236,8 @@ jobs:
     permissions:
       contents: write
     env:
-      RELEASE_DIR: ${{ runner.temp }}/opencowork-release
-      INTERNAL_DIR: ${{ runner.temp }}/opencowork-release/_internal
+      RELEASE_DIR: ${{ github.workspace }}/.gha-release
+      INTERNAL_DIR: ${{ github.workspace }}/.gha-release/_internal
     steps:
       - name: Checkout public release repository
         uses: actions/checkout@v6
@@ -414,8 +414,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 240
     env:
-      RELEASE_DIST: ${{ runner.temp }}/opencowork-release-dist
-      RUNTIME_BUNDLE_DIST: ${{ runner.temp }}/opencowork-runtime-dist
+      RELEASE_DIST: ${{ github.workspace }}/.gha-release-dist
+      RUNTIME_BUNDLE_DIST: ${{ github.workspace }}/.gha-runtime-dist
       OPENCOWORK_RELEASE_PLATFORM: win32
       OPENCOWORK_RELEASE_ARCH: x64
     steps:
