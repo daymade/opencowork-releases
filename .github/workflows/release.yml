@@ -311,3 +311,48 @@ jobs:
             ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip.blockmap
             ${{ env.RELEASE_DIST }}/latest-mac.yml
             ${{ env.RELEASE_DIST }}/SHA256SUMS.txt
+
+      - name: Verify published DMG from GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          VERIFY_DIR="$(mktemp -d /tmp/opencowork-published-verify.XXXXXX)"
+          MOUNT_DIR="$(mktemp -d /tmp/opencowork-published-dmg.XXXXXX)"
+
+          cleanup() {
+            hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1 || true
+            rm -rf "$VERIFY_DIR"
+            rmdir "$MOUNT_DIR" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          gh release download "v$RELEASE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "OpenCoWork-*.dmg" \
+            --dir "$VERIFY_DIR" \
+            --clobber
+
+          DMG_FILE="$(find "$VERIFY_DIR" -name 'OpenCoWork-*.dmg' | head -1)"
+          if [ -z "$DMG_FILE" ]; then
+            echo "::error::Published DMG not found after release download"
+            exit 1
+          fi
+
+          xcrun stapler validate "$DMG_FILE"
+          hdiutil attach "$DMG_FILE" -mountpoint "$MOUNT_DIR" -nobrowse -readonly >/dev/null
+
+          APP_PATH="$MOUNT_DIR/OpenCoWork.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::OpenCoWork.app not found inside published DMG"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict "$APP_PATH"
+          CODESIGN_INFO="$(codesign -dvv "$APP_PATH" 2>&1 || true)"
+          printf '%s\n' "$CODESIGN_INFO" | grep -q "Developer ID Application"
+          printf '%s\n' "$CODESIGN_INFO" | grep -q "runtime"
+          spctl --assess --type execute --verbose=2 "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
