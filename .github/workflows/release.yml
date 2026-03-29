@@ -30,6 +30,9 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -91,7 +94,7 @@ jobs:
       RUNTIME_BUNDLE_DIST: /tmp/opencowork-runtime-dist
     steps:
       - name: Checkout private source repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ needs.prepare.outputs.source_repository }}
           token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
@@ -99,7 +102,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
@@ -108,12 +111,12 @@ jobs:
         run: uv python install 3.12
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 9
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "pnpm"
@@ -128,8 +131,10 @@ jobs:
             exit 1
           fi
 
-      - name: Cache Electron downloads
-        uses: actions/cache@v4
+      - name: Restore Electron downloads cache
+        id: electron-cache-restore
+        continue-on-error: true
+        uses: actions/cache/restore@v5
         with:
           path: ~/Library/Caches/electron
           key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
@@ -192,7 +197,7 @@ jobs:
             --output-dir "$RELEASE_DIST"
 
       - name: Upload notarization stage artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-macos-notarize-stage
           retention-days: 7
@@ -200,6 +205,14 @@ jobs:
             ${{ env.RELEASE_DIST }}/_internal/OpenCoWork.app.zip
             ${{ env.RELEASE_DIST }}/_internal/notarization-state.json
             ${{ env.RELEASE_DIST }}/_internal/release-contract.json
+
+      - name: Save Electron downloads cache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ~/Library/Caches/electron
+          key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
 
   resume-release-assets:
     needs: [prepare, submit-notarization-stage]
@@ -210,7 +223,7 @@ jobs:
       STAGE_DIST: /tmp/opencowork-notarize-stage
     steps:
       - name: Checkout private source repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ needs.prepare.outputs.source_repository }}
           token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
@@ -218,12 +231,12 @@ jobs:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 9
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "pnpm"
@@ -238,8 +251,10 @@ jobs:
             exit 1
           fi
 
-      - name: Cache Electron downloads
-        uses: actions/cache@v4
+      - name: Restore Electron downloads cache
+        id: electron-cache-restore
+        continue-on-error: true
+        uses: actions/cache/restore@v5
         with:
           path: ~/Library/Caches/electron
           key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
@@ -250,7 +265,7 @@ jobs:
         run: mkdir -p "$RELEASE_DIST" "$STAGE_DIST"
 
       - name: Download notarization stage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-macos-notarize-stage
           path: ${{ env.STAGE_DIST }}/_internal
@@ -457,3 +472,11 @@ jobs:
           printf '%s\n' "$CODESIGN_INFO" | grep -q "runtime"
           spctl --assess --type execute --verbose=2 "$APP_PATH"
           xcrun stapler validate "$APP_PATH"
+
+      - name: Save Electron downloads cache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ~/Library/Caches/electron
+          key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
