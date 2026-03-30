@@ -503,6 +503,7 @@ jobs:
           RELEASE_ENTRYPOINT: ${{ needs.prepare.outputs.release_entrypoint }}
           GH_TOKEN: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
           OPENCOWORK_SOURCE_REPO: ${{ needs.prepare.outputs.source_repository }}
+          OPENCOWORK_RUN_WINDOWS_INSTALLER_SMOKE: "0"
           OPENCOWORK_RUNTIME_BUNDLE_LOCAL_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
           OPENCOWORK_RUNTIME_BUNDLE_LOCAL_SHA_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz.sha256', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
         run: |
