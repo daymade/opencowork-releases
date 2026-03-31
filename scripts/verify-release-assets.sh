@@ -12,20 +12,46 @@ fail() {
 parse_yaml_asset() {
   local yaml_path="$1"
   ruby <<'RUBY' "$yaml_path"
+    require "yaml"
+
     yaml_path = ARGV.fetch(0)
-    content = File.read(yaml_path)
+    payload = YAML.load_file(yaml_path)
 
-    path_match = content.match(/^path:\s*(.+)$/)
-    url_match = content.match(/^[ \t]*-?[ \t]*url:\s*(.+)$/)
-    value = (path_match && path_match[1]) || (url_match && url_match[1]) || ""
-    value = value.strip
+    candidates = []
+    if payload.is_a?(Hash)
+      candidates << payload["path"] if payload["path"].is_a?(String)
+      candidates << payload["url"] if payload["url"].is_a?(String)
 
-    if (value.start_with?("\"") && value.end_with?("\"")) ||
-       (value.start_with?("'") && value.end_with?("'"))
-      value = value[1...-1]
+      if payload["files"].is_a?(Array)
+        payload["files"].each do |entry|
+          next unless entry.is_a?(Hash)
+          candidates << entry["path"] if entry["path"].is_a?(String)
+          candidates << entry["url"] if entry["url"].is_a?(String)
+        end
+      end
     end
 
-    print(value)
+    value = candidates.find do |candidate|
+      candidate.to_s.strip != ""
+    end
+
+    if value
+      value = value.strip
+
+      if (value.start_with?("\"") && value.end_with?("\"")) ||
+         (value.start_with?("'") && value.end_with?("'"))
+        value = value[1...-1]
+      end
+
+      if value.include?("://")
+        value = value.split("?").first
+        value = value.split("/").last
+      elsif value.include?("/")
+        value = File.basename(value)
+      end
+    end
+
+    puts value.to_s
 RUBY
 }
 
