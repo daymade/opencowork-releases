@@ -26,7 +26,7 @@ on:
         description: "Emergency mode: build runtime bundles in public release jobs instead of requiring prepublished source runtime assets"
         required: false
         type: boolean
-        default: false
+        default: true
 
 concurrency:
   group: release-${{ github.event.client_payload.version || inputs.version }}
@@ -62,6 +62,7 @@ jobs:
           PAYLOAD_RELEASE_ENTRYPOINT_SNAKE: ${{ github.event.client_payload.release_entrypoint }}
           PAYLOAD_RELEASE_ENTRYPOINT_CAMEL: ${{ github.event.client_payload.releaseEntrypoint }}
           PAYLOAD_RUNTIME_FALLBACK_BUILD: ${{ github.event.client_payload.runtime_fallback_build }}
+          PAYLOAD_RUNTIME_FALLBACK_BUILD_CAMEL: ${{ github.event.client_payload.runtimeFallbackBuild }}
         run: |
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
             REF="${{ github.event.client_payload.ref }}"
@@ -70,7 +71,7 @@ jobs:
             SOURCE_REPOSITORY="${PAYLOAD_SOURCE_REPOSITORY_SNAKE:-$PAYLOAD_SOURCE_REPOSITORY_CAMEL}"
             SOURCE_REPOSITORY="${SOURCE_REPOSITORY:-$PAYLOAD_SOURCE_REPOSITORY_SHORT}"
             RELEASE_ENTRYPOINT="${PAYLOAD_RELEASE_ENTRYPOINT_SNAKE:-$PAYLOAD_RELEASE_ENTRYPOINT_CAMEL}"
-            RUNTIME_FALLBACK_BUILD="${PAYLOAD_RUNTIME_FALLBACK_BUILD:-false}"
+            RUNTIME_FALLBACK_BUILD="${PAYLOAD_RUNTIME_FALLBACK_BUILD:-${PAYLOAD_RUNTIME_FALLBACK_BUILD_CAMEL:-true}}"
           else
             REF="${{ inputs.ref }}"
             HEAD_SHA="${{ inputs.head_sha }}"
@@ -82,6 +83,12 @@ jobs:
 
           SOURCE_REPOSITORY="${SOURCE_REPOSITORY:-$DEFAULT_SOURCE_REPOSITORY}"
           RELEASE_ENTRYPOINT="${RELEASE_ENTRYPOINT:-$DEFAULT_RELEASE_ENTRYPOINT}"
+          RUNTIME_FALLBACK_BUILD="$(printf '%s' "$RUNTIME_FALLBACK_BUILD" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$RUNTIME_FALLBACK_BUILD" != "true" && "$RUNTIME_FALLBACK_BUILD" != "false" ]]; then
+            echo "::error::Invalid runtime_fallback_build value: $RUNTIME_FALLBACK_BUILD"
+            echo "::error::Expected true or false."
+            exit 1
+          fi
 
           if [ -z "$REF" ] || [ -z "$HEAD_SHA" ] || [ -z "$VERSION" ]; then
             echo "::error::ref, head_sha, and version are required."
@@ -94,6 +101,16 @@ jobs:
           echo "source_repository=$SOURCE_REPOSITORY" >> "$GITHUB_OUTPUT"
           echo "release_entrypoint=$RELEASE_ENTRYPOINT" >> "$GITHUB_OUTPUT"
           echo "runtime_fallback_build=${RUNTIME_FALLBACK_BUILD:-false}" >> "$GITHUB_OUTPUT"
+
+      - name: Log resolved release parameters
+        run: |
+          echo "resolved public release parameters:"
+          echo "  ref=${{ steps.params.outputs.ref }}"
+          echo "  head_sha=${{ steps.params.outputs.head_sha }}"
+          echo "  version=${{ steps.params.outputs.version }}"
+          echo "  source_repository=${{ steps.params.outputs.source_repository }}"
+          echo "  release_entrypoint=${{ steps.params.outputs.release_entrypoint }}"
+          echo "  runtime_fallback_build=${{ steps.params.outputs.runtime_fallback_build }}"
 
   submit-notarization-stage:
     needs: prepare
@@ -477,6 +494,40 @@ jobs:
             exit 1
           fi
 
+      - name: Log Windows build context
+        shell: bash
+        env:
+          LOCAL_RUNTIME_BUNDLE_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
+          LOCAL_RUNTIME_BUNDLE_SHA_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz.sha256', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
+        run: |
+          echo "Windows build context:"
+          echo "  version=${{ needs.prepare.outputs.version }}"
+          echo "  head_sha=${{ needs.prepare.outputs.head_sha }}"
+          echo "  source_repository=${{ needs.prepare.outputs.source_repository }}"
+          echo "  release_entrypoint=${{ needs.prepare.outputs.release_entrypoint }}"
+          echo "  runtime_fallback_build=${{ needs.prepare.outputs.runtime_fallback_build }}"
+          echo "  release_platform=${OPENCOWORK_RELEASE_PLATFORM}"
+          echo "  release_arch=${OPENCOWORK_RELEASE_ARCH}"
+          echo "  runtime_bundle_dist=${RUNTIME_BUNDLE_DIST}"
+          echo "  release_dist=${RELEASE_DIST}"
+          echo "  local runtime bundle file: ${LOCAL_RUNTIME_BUNDLE_FILE:-<not set>}"
+          echo "  local runtime sha file: ${LOCAL_RUNTIME_BUNDLE_SHA_FILE:-<not set>}"
+          if [[ -n "${LOCAL_RUNTIME_BUNDLE_FILE}" ]]; then
+            if [[ -f "${LOCAL_RUNTIME_BUNDLE_FILE}" ]]; then
+              echo "  local runtime bundle exists: yes"
+              ls -l "${LOCAL_RUNTIME_BUNDLE_FILE}"
+              if [[ -n "${LOCAL_RUNTIME_BUNDLE_SHA_FILE}" && -f "${LOCAL_RUNTIME_BUNDLE_SHA_FILE}" ]]; then
+                echo "  local runtime bundle sha exists: yes"
+                ls -l "${LOCAL_RUNTIME_BUNDLE_SHA_FILE}"
+              elif [[ -n "${LOCAL_RUNTIME_BUNDLE_SHA_FILE}" ]]; then
+                echo "  local runtime bundle sha missing: ${LOCAL_RUNTIME_BUNDLE_SHA_FILE}"
+              fi
+            else
+              echo "  local runtime bundle exists: no"
+              echo "  ⚠️  runtime bundle fallback path is set but artifact is absent; assembly will fail unless private asset download is used."
+            fi
+          fi
+
       - name: Prepare artifact directories
         shell: bash
         run: |
@@ -537,6 +588,8 @@ jobs:
           OPENCOWORK_RUN_WINDOWS_INSTALLER_SMOKE: "0"
           OPENCOWORK_RUNTIME_BUNDLE_LOCAL_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
           OPENCOWORK_RUNTIME_BUNDLE_LOCAL_SHA_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz.sha256', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
+          WINDOWS_LOG_RUNTIME_BUNDLE_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
+          WINDOWS_LOG_RUNTIME_BUNDLE_SHA_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz.sha256', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
           OPENCOWORK_RELEASE_MODE: full
         run: |
           ENTRYPOINT="$GITHUB_WORKSPACE/$RELEASE_ENTRYPOINT"
@@ -557,7 +610,46 @@ jobs:
               ENTRYPOINT_ARGS+=(--mode full)
             fi
           fi
+
+          echo "Windows assembly contract:"
+          echo "  entrypoint=$ENTRYPOINT"
+          echo "  output_dir=$RELEASE_DIST"
+          echo "  mode=full (forced by this workflow when supported)"
+          echo "  windows runtime fallback bundle file=${WINDOWS_LOG_RUNTIME_BUNDLE_FILE:-<not set>}"
+          if [[ -n "${WINDOWS_LOG_RUNTIME_BUNDLE_FILE}" ]]; then
+            echo "  windows runtime fallback bundle exists=$([ -f "$WINDOWS_LOG_RUNTIME_BUNDLE_FILE" ] && echo yes || echo no)"
+          else
+            echo "  windows runtime fallback bundle exists=<not set>"
+          fi
+          if [[ -n "${WINDOWS_LOG_RUNTIME_BUNDLE_SHA_FILE}" ]]; then
+            echo "  windows runtime fallback sha exists=$([ -f "$WINDOWS_LOG_RUNTIME_BUNDLE_SHA_FILE" ] && echo yes || echo no)"
+          else
+            echo "  windows runtime fallback sha exists=<not set>"
+          fi
+          if [[ "${#ENTRYPOINT_ARGS[@]}" -gt 0 ]]; then
+            echo "  entrypoint args:"
+            printf '    %q ' "${ENTRYPOINT_ARGS[@]}"
+            echo
+          fi
           bash "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
+
+      - name: Inspect Windows artifacts before installer smoke
+        shell: bash
+        run: |
+          echo "artifact snapshot before Windows installer smoke:"
+          find "$RELEASE_DIST" -maxdepth 1 -type f | sort
+          if ! compgen -G "$RELEASE_DIST/OpenCoWork-*.exe" >/dev/null; then
+            echo "::error::Missing Windows installer .exe artifact in $RELEASE_DIST"
+            exit 1
+          fi
+          if ! compgen -G "$RELEASE_DIST/OpenCoWork-*.zip" >/dev/null; then
+            echo "::error::Missing Windows installer .zip artifact in $RELEASE_DIST"
+            exit 1
+          fi
+          if ! compgen -G "$RELEASE_DIST/latest.yml" >/dev/null; then
+            echo "::error::Missing latest.yml metadata in $RELEASE_DIST"
+            exit 1
+          fi
 
       - name: Run Windows installer smoke
         shell: bash
