@@ -633,26 +633,18 @@ jobs:
           fi
           bash "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
 
-      - name: Inspect Windows artifacts before installer smoke
+      - name: Collect Windows artifact manifest
+        id: windows-artifacts
         shell: bash
         run: |
+          mapfile -t WINDOWS_ARTIFACTS < <(bash scripts/collect-release-files.sh --release-dir "$RELEASE_DIST" --platform windows)
           echo "artifact snapshot before Windows installer smoke:"
-          find "$RELEASE_DIST" -maxdepth 1 -type f | sort
-
-          if ! find "$RELEASE_DIST" -maxdepth 1 -type f -name 'OpenCoWork-*.exe' | grep -q .; then
-            echo "::error::Missing Windows installer .exe artifact in $RELEASE_DIST"
-            exit 1
-          fi
-
-          if ! find "$RELEASE_DIST" -maxdepth 1 -type f -name 'OpenCoWork-*.zip' | grep -q .; then
-            echo "::error::Missing Windows installer .zip artifact in $RELEASE_DIST"
-            exit 1
-          fi
-
-          if ! find "$RELEASE_DIST" -maxdepth 1 -type f -name 'latest.yml' | grep -q .; then
-            echo "::error::Missing latest.yml metadata in $RELEASE_DIST"
-            exit 1
-          fi
+          printf '%s\n' "${WINDOWS_ARTIFACTS[@]}"
+          {
+            echo 'paths<<EOF'
+            printf '%s\n' "${WINDOWS_ARTIFACTS[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run Windows installer smoke
         shell: bash
@@ -664,13 +656,7 @@ jobs:
         with:
           name: release-windows-x64
           retention-days: 7
-          path: |
-            ${{ env.RELEASE_DIST }}/OpenCoWork-*.exe
-            ${{ env.RELEASE_DIST }}/OpenCoWork-*.zip
-            ${{ env.RELEASE_DIST }}/OpenCoWork-*.blockmap
-            ${{ env.RELEASE_DIST }}/latest.yml
-            ${{ env.RELEASE_DIST }}/_internal/release-metadata.json
-            ${{ env.RELEASE_DIST }}/_internal/release-notes.md
+          path: ${{ steps.windows-artifacts.outputs.paths }}
 
       - name: Save Electron downloads cache
         if: always()

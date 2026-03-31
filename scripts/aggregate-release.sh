@@ -94,7 +94,10 @@ find "$ARTIFACTS_DIR" -type f \( \
   -name '*.yml' \
 \) -exec cp {} "$RELEASE_DIR"/ \;
 
-find "$RELEASE_DIR" -maxdepth 1 -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$RELEASE_DIR/SHA256SUMS.txt"
+(
+  cd "$RELEASE_DIR"
+  find . -maxdepth 1 -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$RELEASE_DIR/SHA256SUMS.txt"
+)
 
 ruby <<'RUBY'
 require 'json'
@@ -120,7 +123,7 @@ checksum_path = File.join(release_dir, 'SHA256SUMS.txt')
 File.readlines(checksum_path, chomp: true).each do |line|
   next if line.strip.empty?
   sha, file = line.split(/\s+/, 2)
-  checksum_map[file.sub(/\A\*/, '')] = sha
+  checksum_map[File.basename(file.sub(/\A\*/, ''))] = sha
 end
 
 metadata = {
@@ -160,6 +163,12 @@ windows_installers = files.select { |name| name.end_with?('.exe') }.sort
 mac_installers = files.select { |name| name.end_with?('.dmg') }.sort
 
 errors = []
+if mac_installers.empty?
+  errors << 'macOS release artifact aggregation is incomplete: expected at least one DMG'
+end
+if windows_installers.empty?
+  errors << 'Windows release artifact aggregation is incomplete: expected at least one installer .exe'
+end
 if !mac_installers.empty? && mac_update_metadata.empty?
   errors << 'macOS distributables are present but no *-mac.yml metadata was aggregated'
 end

@@ -133,7 +133,7 @@ if [[ -f "$WIN_YML" ]]; then
   [[ -f "$RELEASE_DIR/$WIN_REF" ]] || fail "latest.yml references missing asset: $WIN_REF"
 fi
 
-ruby <<'RUBY' "$METADATA_PATH" "$RELEASE_DIR"
+ruby - "$METADATA_PATH" "$RELEASE_DIR" <<'RUBY'
 require 'json'
 
 metadata_path = ARGV.fetch(0)
@@ -143,11 +143,11 @@ files = metadata.fetch('files')
 raise 'release metadata files must be an array' unless files.is_a?(Array)
 raise 'release metadata files array is empty' if files.empty?
 
-missing = files.filter_map do |entry|
+missing = files.each_with_object([]) do |entry, acc|
   path = entry['path']
   next unless path.is_a?(String) && !path.empty?
   full = File.join(release_dir, path)
-  path unless File.file?(full)
+  acc << path unless File.file?(full)
 end
 
 raise "release metadata references missing files: #{missing.join(', ')}" unless missing.empty?

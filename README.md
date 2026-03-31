@@ -64,6 +64,16 @@ OpenCoWork desktop uses a branded update feed instead of checking GitHub Release
 
 This repository is for public release downloads and issue tracking only. OpenCoWork source code is maintained separately.
 
+## Maintainer Notes
+
+When changing release workflow scripts in this repository, run:
+
+```bash
+bash tests/release-scripts.sh
+```
+
+The public release workflow intentionally enumerates concrete Windows artifact files before smoke/upload. Avoid raw wildcard matching against drive-letter paths in GitHub Actions.
+
 ## Verify a Download
 
 Official releases may include `SHA256SUMS.txt` for checksum verification.
