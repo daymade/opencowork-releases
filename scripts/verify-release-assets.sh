@@ -14,11 +14,9 @@ parse_yaml_asset() {
   ruby -r yaml - "$yaml_path" <<'RUBY'
     require "yaml"
 
-    yaml_path = ARGV.fetch(0)
-    payload = YAML.load_file(yaml_path)
+    def extract_asset_refs(payload, candidates)
+      return unless payload.is_a?(Hash)
 
-    candidates = []
-    if payload.is_a?(Hash)
       candidates << payload["path"] if payload["path"].is_a?(String)
       candidates << payload["url"] if payload["url"].is_a?(String)
 
@@ -31,27 +29,49 @@ parse_yaml_asset() {
       end
     end
 
-    value = candidates.find do |candidate|
-      candidate.to_s.strip != ""
-    end
+    def normalize_candidate(raw)
+      return nil unless raw.is_a?(String)
 
-    if value
-      value = value.strip
+      value = raw.strip
+      value = value.gsub(/\s+#.*$/, "")
+      return nil if value.empty?
 
       if (value.start_with?("\"") && value.end_with?("\"")) ||
          (value.start_with?("'") && value.end_with?("'"))
         value = value[1...-1]
       end
 
-      if value.include?("://")
-        value = value.split("?").first
-        value = value.split("/").last
-      elsif value.include?("/")
-        value = File.basename(value)
+      return nil if value.empty?
+      value = value.split("?").first if value.include?("://")
+      value = File.basename(value) if value.include?("/")
+      value = value.strip
+      value.empty? ? nil : value
+    end
+
+    yaml_path = ARGV.fetch(0)
+    candidates = []
+    payload = nil
+
+    begin
+      payload = YAML.load_file(yaml_path)
+    rescue StandardError => e
+      $stderr.puts "warn: failed YAML parse for #{yaml_path}: #{e.class}: #{e.message}" if ENV["DEBUG_RELEASE_PARSE"] == "1"
+    end
+
+    extract_asset_refs(payload, candidates) if payload
+
+    if candidates.empty?
+      File.readlines(yaml_path).each do |line|
+        if (match = line.match(/^\s*path:\s*(.+?)\s*(?:#.*)?$/))
+          candidates << match[1]
+        elsif (match = line.match(/^\s*url:\s*(.+?)\s*(?:#.*)?$/))
+          candidates << match[1]
+        end
       end
     end
 
-    puts value.to_s
+    value = candidates.find { |candidate| normalize_candidate(candidate) }
+    puts normalize_candidate(value).to_s
 RUBY
 }
 
