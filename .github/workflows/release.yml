@@ -500,6 +500,31 @@ jobs:
             --head-sha "$RELEASE_HEAD_SHA" \
             --output-dir "$RUNTIME_BUNDLE_DIST"
 
+      - name: Ensure POSIX checksum command compatibility on Windows
+        shell: bash
+        run: |
+          if command -v shasum >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          if ! command -v sha256sum >/dev/null 2>&1; then
+            echo "::error::Neither shasum nor sha256sum is available. This job requires one of them for checksum validation."
+            exit 1
+          fi
+
+          cat <<'EOF' > "$RUNNER_TEMP/shasum"
+          #!/usr/bin/env bash
+          args=("$@")
+
+          if [[ "${args[0]:-}" == "-a" ]]; then
+            args=("${args[@]:2}")
+          fi
+
+          sha256sum "${args[@]}"
+          EOF
+          chmod +x "$RUNNER_TEMP/shasum"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       - name: Assemble Windows desktop artifacts via private release entrypoint
         shell: bash
         env:
