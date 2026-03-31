@@ -138,7 +138,7 @@ jobs:
         run: |
           ACTUAL_SHA="$(git rev-parse HEAD)"
           EXPECTED_SHA="${{ needs.prepare.outputs.head_sha }}"
-          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+          if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" && "$ACTUAL_SHA" != "${EXPECTED_SHA}"* ]]; then
             echo "::error::Checked out commit $ACTUAL_SHA does not match requested head_sha $EXPECTED_SHA"
             exit 1
           fi
@@ -366,7 +366,7 @@ jobs:
         run: |
           ACTUAL_SHA="$(git rev-parse HEAD)"
           EXPECTED_SHA="${{ needs.prepare.outputs.head_sha }}"
-          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+          if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" && "$ACTUAL_SHA" != "${EXPECTED_SHA}"* ]]; then
             echo "::error::Checked out commit $ACTUAL_SHA does not match requested head_sha $EXPECTED_SHA"
             exit 1
           fi
@@ -472,7 +472,7 @@ jobs:
         run: |
           ACTUAL_SHA="$(git rev-parse HEAD)"
           EXPECTED_SHA="${{ needs.prepare.outputs.head_sha }}"
-          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+          if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" && "$ACTUAL_SHA" != "${EXPECTED_SHA}"* ]]; then
             echo "::error::Checked out commit $ACTUAL_SHA does not match requested head_sha $EXPECTED_SHA"
             exit 1
           fi
@@ -617,7 +617,7 @@ jobs:
         run: |
           ACTUAL_SHA="$(git rev-parse HEAD)"
           EXPECTED_SHA="${{ needs.prepare.outputs.head_sha }}"
-          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+          if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" && "$ACTUAL_SHA" != "${EXPECTED_SHA}"* ]]; then
             echo "::error::Checked out commit $ACTUAL_SHA does not match requested head_sha $EXPECTED_SHA"
             exit 1
           fi
