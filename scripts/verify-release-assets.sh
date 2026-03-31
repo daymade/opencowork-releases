@@ -11,18 +11,7 @@ fail() {
 
 parse_yaml_asset() {
   local yaml_path="$1"
-  ruby <<'RUBY' "$yaml_path"
-yaml_path = ARGV.fetch(0)
-content = File.read(yaml_path)
-path_match = content.match(/^path:\s*(.+)$/)
-url_match = content.match(/^[ \t]*-?[ \t]*url:\s*(.+)$/)
-value = path_match && path_match[1] || url_match && url_match[1] || ''
-value = value.strip
-if (value.start_with?('"') && value.end_with?('"')) || (value.start_with?("'") && value.end_with?("'"))
-  value = value[1..-2]
-end
-print value
-RUBY
+  ruby -e 'yaml_path = ARGV.fetch(0); content = File.read(yaml_path); path_match = content.match(/^path:\s*(.+)$/); url_match = content.match(/^[ \t]*-?[ \t]*url:\s*(.+)$/); value = (path_match && path_match[1]) || (url_match && url_match[1]) || ""; value = value.strip; if (value.start_with?("\"") && value.end_with?("\"")) || (value.start_with?(\"'\") && value.end_with?(\"'\")); value = value[1..-2]; end; print value' "$yaml_path"
 }
 
 while [[ $# -gt 0 ]]; do
