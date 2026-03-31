@@ -11,7 +11,7 @@ fail() {
 
 parse_yaml_asset() {
   local yaml_path="$1"
-  ruby <<'RUBY' "$yaml_path"
+  ruby -r yaml - "$yaml_path" <<'RUBY'
     require "yaml"
 
     yaml_path = ARGV.fetch(0)
