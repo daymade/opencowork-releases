@@ -72,6 +72,18 @@ done
 [[ -n "$SOURCE_REF" ]] || fail "missing --source-ref"
 [[ -n "$SOURCE_HEAD_SHA" ]] || fail "missing --source-head-sha"
 
+SOURCE_REF="${SOURCE_REF:-${RELEASE_REF:-}}"
+SOURCE_HEAD_SHA="${SOURCE_HEAD_SHA:-${RELEASE_HEAD_SHA:-}}"
+[[ -n "$SOURCE_REF" ]] || fail "missing source_ref and SOURCE_REF/RELEASE_REF"
+[[ -n "$SOURCE_HEAD_SHA" ]] || fail "missing source_head_sha and SOURCE_HEAD_SHA/RELEASE_HEAD_SHA"
+
+export RELEASE_DIR
+export INTERNAL_DIR
+export RELEASE_VERSION="$VERSION"
+export SOURCE_REPOSITORY
+export SOURCE_REF
+export SOURCE_HEAD_SHA
+
 mkdir -p "$RELEASE_DIR" "$INTERNAL_DIR"
 
 find "$ARTIFACTS_DIR" -type f \( \
