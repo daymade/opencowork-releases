@@ -211,12 +211,12 @@ jobs:
             --head-sha "$RELEASE_HEAD_SHA"
             --output-dir "$RELEASE_DIST"
           )
-          if "$ENTRYPOINT" --help >/tmp/release-entrypoint-help.txt 2>&1; then
+          if bash "$ENTRYPOINT" --help >/tmp/release-entrypoint-help.txt 2>&1; then
             if grep -q -- "--mode" /tmp/release-entrypoint-help.txt; then
               ENTRYPOINT_ARGS+=(--mode submit)
             fi
           fi
-          "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
+          bash "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
 
       - name: Upload notarization stage artifacts
         uses: actions/upload-artifact@v7
@@ -512,6 +512,7 @@ jobs:
           OPENCOWORK_RUN_WINDOWS_INSTALLER_SMOKE: "0"
           OPENCOWORK_RUNTIME_BUNDLE_LOCAL_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
           OPENCOWORK_RUNTIME_BUNDLE_LOCAL_SHA_FILE: ${{ needs.prepare.outputs.runtime_fallback_build == 'true' && format('{0}/opencowork-runtime-{1}-win32-x64.tar.gz.sha256', env.RUNTIME_BUNDLE_DIST, needs.prepare.outputs.version) || '' }}
+          OPENCOWORK_RELEASE_MODE: full
         run: |
           ENTRYPOINT="$GITHUB_WORKSPACE/$RELEASE_ENTRYPOINT"
           if [ ! -f "$ENTRYPOINT" ]; then
@@ -526,12 +527,12 @@ jobs:
             --head-sha "$RELEASE_HEAD_SHA"
             --output-dir "$RELEASE_DIST"
           )
-          if "$ENTRYPOINT" --help >/tmp/release-entrypoint-help.txt 2>&1; then
+          if bash "$ENTRYPOINT" --help >/tmp/release-entrypoint-help.txt 2>&1; then
             if grep -q -- "--mode" /tmp/release-entrypoint-help.txt; then
               ENTRYPOINT_ARGS+=(--mode full)
             fi
           fi
-          "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
+          bash "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
 
       - name: Run Windows installer smoke
         shell: bash
@@ -649,12 +650,12 @@ jobs:
             --head-sha "$RELEASE_HEAD_SHA"
             --output-dir "$RELEASE_DIST"
           )
-          if "$ENTRYPOINT" --help >/tmp/release-entrypoint-help.txt 2>&1; then
+          if bash "$ENTRYPOINT" --help >/tmp/release-entrypoint-help.txt 2>&1; then
             if grep -q -- "--mode" /tmp/release-entrypoint-help.txt; then
               ENTRYPOINT_ARGS+=(--mode resume)
             fi
           fi
-          "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
+          bash "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
 
       - name: Verify release outputs
         run: |
