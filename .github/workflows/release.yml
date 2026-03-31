@@ -205,12 +205,18 @@ jobs:
           fi
 
           chmod +x "$ENTRYPOINT"
-          "$ENTRYPOINT" \
-            --version "$RELEASE_VERSION" \
-            --ref "$RELEASE_REF" \
-            --head-sha "$RELEASE_HEAD_SHA" \
-            --mode submit \
+          ENTRYPOINT_ARGS=(
+            --version "$RELEASE_VERSION"
+            --ref "$RELEASE_REF"
+            --head-sha "$RELEASE_HEAD_SHA"
             --output-dir "$RELEASE_DIST"
+          )
+          if "$ENTRYPOINT" --help >/tmp/release-entrypoint-help.txt 2>&1; then
+            if grep -q -- "--mode" /tmp/release-entrypoint-help.txt; then
+              ENTRYPOINT_ARGS+=(--mode submit)
+            fi
+          fi
+          "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
 
       - name: Upload notarization stage artifacts
         uses: actions/upload-artifact@v7
@@ -514,12 +520,18 @@ jobs:
           fi
 
           chmod +x "$ENTRYPOINT"
-          "$ENTRYPOINT" \
-            --version "$RELEASE_VERSION" \
-            --ref "$RELEASE_REF" \
-            --head-sha "$RELEASE_HEAD_SHA" \
-            --mode full \
+          ENTRYPOINT_ARGS=(
+            --version "$RELEASE_VERSION"
+            --ref "$RELEASE_REF"
+            --head-sha "$RELEASE_HEAD_SHA"
             --output-dir "$RELEASE_DIST"
+          )
+          if "$ENTRYPOINT" --help >/tmp/release-entrypoint-help.txt 2>&1; then
+            if grep -q -- "--mode" /tmp/release-entrypoint-help.txt; then
+              ENTRYPOINT_ARGS+=(--mode full)
+            fi
+          fi
+          "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
 
       - name: Run Windows installer smoke
         shell: bash
@@ -631,12 +643,18 @@ jobs:
           fi
 
           chmod +x "$ENTRYPOINT"
-          "$ENTRYPOINT" \
-            --version "$RELEASE_VERSION" \
-            --ref "$RELEASE_REF" \
-            --head-sha "$RELEASE_HEAD_SHA" \
-            --mode resume \
+          ENTRYPOINT_ARGS=(
+            --version "$RELEASE_VERSION"
+            --ref "$RELEASE_REF"
+            --head-sha "$RELEASE_HEAD_SHA"
             --output-dir "$RELEASE_DIST"
+          )
+          if "$ENTRYPOINT" --help >/tmp/release-entrypoint-help.txt 2>&1; then
+            if grep -q -- "--mode" /tmp/release-entrypoint-help.txt; then
+              ENTRYPOINT_ARGS+=(--mode resume)
+            fi
+          fi
+          "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
 
       - name: Verify release outputs
         run: |
