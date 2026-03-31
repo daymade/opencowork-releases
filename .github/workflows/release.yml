@@ -638,15 +638,18 @@ jobs:
         run: |
           echo "artifact snapshot before Windows installer smoke:"
           find "$RELEASE_DIST" -maxdepth 1 -type f | sort
-          if ! compgen -G "$RELEASE_DIST/OpenCoWork-*.exe" >/dev/null; then
+
+          if ! find "$RELEASE_DIST" -maxdepth 1 -type f -name 'OpenCoWork-*.exe' | grep -q .; then
             echo "::error::Missing Windows installer .exe artifact in $RELEASE_DIST"
             exit 1
           fi
-          if ! compgen -G "$RELEASE_DIST/OpenCoWork-*.zip" >/dev/null; then
+
+          if ! find "$RELEASE_DIST" -maxdepth 1 -type f -name 'OpenCoWork-*.zip' | grep -q .; then
             echo "::error::Missing Windows installer .zip artifact in $RELEASE_DIST"
             exit 1
           fi
-          if ! compgen -G "$RELEASE_DIST/latest.yml" >/dev/null; then
+
+          if ! find "$RELEASE_DIST" -maxdepth 1 -type f -name 'latest.yml' | grep -q .; then
             echo "::error::Missing latest.yml metadata in $RELEASE_DIST"
             exit 1
           fi
