@@ -469,7 +469,7 @@ jobs:
     env:
       RELEASE_DIST: ${{ github.workspace }}/.gha-release-dist
       RUNTIME_BUNDLE_DIST: ${{ github.workspace }}/.gha-runtime-dist
-      WINDOWS_ARTIFACT_UPLOAD_DIR: ${{ github.workspace }}/.gha-windows-upload
+      WINDOWS_ARTIFACT_UPLOAD_DIR: ${{ github.workspace }}/gha-windows-upload
       OPENCOWORK_RELEASE_PLATFORM: win32
       OPENCOWORK_RELEASE_ARCH: x64
     steps:
