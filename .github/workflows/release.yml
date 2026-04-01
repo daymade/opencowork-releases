@@ -469,6 +469,7 @@ jobs:
     env:
       RELEASE_DIST: ${{ github.workspace }}/.gha-release-dist
       RUNTIME_BUNDLE_DIST: ${{ github.workspace }}/.gha-runtime-dist
+      WINDOWS_ARTIFACT_UPLOAD_DIR: ${{ github.workspace }}/.gha-windows-upload
       OPENCOWORK_RELEASE_PLATFORM: win32
       OPENCOWORK_RELEASE_ARCH: x64
     steps:
@@ -662,18 +663,28 @@ jobs:
           fi
           bash "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
 
-      - name: Collect Windows artifact manifest
-        id: windows-artifacts
+      - name: Checkout public release tools
+        uses: actions/checkout@v6
+        with:
+          path: release-tools
+          ref: ${{ github.sha }}
+
+      - name: Stage Windows workflow artifact files
         shell: bash
         run: |
-          mapfile -t WINDOWS_ARTIFACTS < <(bash scripts/collect-release-files.sh --release-dir "$RELEASE_DIST" --platform windows)
+          rm -rf "$WINDOWS_ARTIFACT_UPLOAD_DIR"
+          mkdir -p "$WINDOWS_ARTIFACT_UPLOAD_DIR"
+
+          mapfile -t WINDOWS_ARTIFACTS < <(bash release-tools/scripts/collect-release-files.sh --release-dir "$RELEASE_DIST" --platform windows)
           echo "artifact snapshot before Windows installer smoke:"
           printf '%s\n' "${WINDOWS_ARTIFACTS[@]}"
-          {
-            echo 'paths<<EOF'
-            printf '%s\n' "${WINDOWS_ARTIFACTS[@]}"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+
+          for src in "${WINDOWS_ARTIFACTS[@]}"; do
+            rel_path="${src#"$RELEASE_DIST"/}"
+            dest_path="$WINDOWS_ARTIFACT_UPLOAD_DIR/$rel_path"
+            mkdir -p "$(dirname "$dest_path")"
+            cp "$src" "$dest_path"
+          done
 
       - name: Run Windows installer smoke
         shell: bash
@@ -685,7 +696,7 @@ jobs:
         with:
           name: release-windows-x64
           retention-days: 7
-          path: ${{ steps.windows-artifacts.outputs.paths }}
+          path: ${{ env.WINDOWS_ARTIFACT_UPLOAD_DIR }}
 
       - name: Save Electron downloads cache
         if: always()
