@@ -73,6 +73,7 @@ bash tests/release-scripts.sh
 ```
 
 The public release workflow intentionally enumerates concrete Windows artifact files before smoke/upload. Avoid raw wildcard matching against drive-letter paths in GitHub Actions.
+For manual `workflow_dispatch`, prefer leaving `head_sha` empty. The workflow resolves the canonical private-source commit from `ref` and pins all jobs to that exact SHA.
 
 ## Verify a Download
 

@@ -164,9 +164,33 @@ test_collect_release_files_windows() {
   grep -q '_internal/release-notes.md' <<<"$output" || fail "internal notes missing from collected file list"
 }
 
+test_normalize_source_head_sha() {
+  local exact prefix empty
+  exact="$(bash "$REPO_ROOT/scripts/normalize-source-head-sha.sh" \
+    --resolved-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b \
+    --requested-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b)"
+  [[ "$exact" == "517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b" ]] || fail "exact SHA normalization failed"
+
+  prefix="$(bash "$REPO_ROOT/scripts/normalize-source-head-sha.sh" \
+    --resolved-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b \
+    --requested-sha 517c04b0)"
+  [[ "$prefix" == "517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b" ]] || fail "prefix SHA normalization failed"
+
+  empty="$(bash "$REPO_ROOT/scripts/normalize-source-head-sha.sh" \
+    --resolved-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b)"
+  [[ "$empty" == "517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b" ]] || fail "empty requested SHA should resolve to canonical SHA"
+
+  if bash "$REPO_ROOT/scripts/normalize-source-head-sha.sh" \
+    --resolved-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b \
+    --requested-sha 517c04b4 >/dev/null 2>&1; then
+    fail "mismatched SHA prefix should fail normalization"
+  fi
+}
+
 test_aggregate_release_populates_sha256
 test_verify_release_assets_parses_json_metadata
 test_collect_release_files_windows
 test_aggregate_release_requires_windows_artifacts
+test_normalize_source_head_sha
 
 echo "release script tests passed"

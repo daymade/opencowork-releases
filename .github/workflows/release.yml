@@ -9,8 +9,8 @@ on:
         description: "Git ref (tag or branch) in the private source repo"
         required: true
       head_sha:
-        description: "Exact source commit SHA to assemble"
-        required: true
+        description: "Optional exact source commit SHA or prefix; leave empty to resolve from ref automatically"
+        required: false
       version:
         description: "Version without leading v (for example 0.1.0 or 0.1.0-beta.1)"
         required: true
@@ -54,6 +54,7 @@ jobs:
         env:
           DEFAULT_SOURCE_REPOSITORY: daymade/opencowork
           DEFAULT_RELEASE_ENTRYPOINT: scripts/release/assemble-public-release.sh
+          SOURCE_REPO_TOKEN: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
           PAYLOAD_HEAD_SHA_SNAKE: ${{ github.event.client_payload.head_sha }}
           PAYLOAD_HEAD_SHA_CAMEL: ${{ github.event.client_payload.headSha }}
           PAYLOAD_SOURCE_REPOSITORY_SNAKE: ${{ github.event.client_payload.source_repository }}
@@ -90,10 +91,26 @@ jobs:
             exit 1
           fi
 
-          if [ -z "$REF" ] || [ -z "$HEAD_SHA" ] || [ -z "$VERSION" ]; then
-            echo "::error::ref, head_sha, and version are required."
+          if [ -z "$REF" ] || [ -z "$VERSION" ]; then
+            echo "::error::ref and version are required."
             exit 1
           fi
+
+          if [ -z "${SOURCE_REPO_TOKEN:-}" ]; then
+            echo "::error::OPENCOWORK_SOURCE_REPO_TOKEN is required to resolve the source ref."
+            exit 1
+          fi
+
+          CANONICAL_HEAD_SHA="$(git ls-remote "https://x-access-token:${SOURCE_REPO_TOKEN}@github.com/${SOURCE_REPOSITORY}.git" "$REF" | awk 'NR==1 {print $1}')"
+          if [ -z "$CANONICAL_HEAD_SHA" ]; then
+            echo "::error::Unable to resolve source ref $REF in $SOURCE_REPOSITORY"
+            echo "::error::Use a branch or tag ref that exists in the private source repository."
+            exit 1
+          fi
+
+          HEAD_SHA="$(bash scripts/normalize-source-head-sha.sh \
+            --resolved-sha "$CANONICAL_HEAD_SHA" \
+            --requested-sha "${HEAD_SHA:-}")"
 
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
@@ -125,7 +142,7 @@ jobs:
         with:
           repository: ${{ needs.prepare.outputs.source_repository }}
           token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
+          ref: ${{ needs.prepare.outputs.head_sha }}
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -370,7 +387,7 @@ jobs:
         with:
           repository: ${{ needs.prepare.outputs.source_repository }}
           token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
+          ref: ${{ needs.prepare.outputs.head_sha }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -448,7 +465,7 @@ jobs:
         with:
           repository: ${{ needs.prepare.outputs.source_repository }}
           token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
+          ref: ${{ needs.prepare.outputs.head_sha }}
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -679,7 +696,7 @@ jobs:
         with:
           repository: ${{ needs.prepare.outputs.source_repository }}
           token: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
+          ref: ${{ needs.prepare.outputs.head_sha }}
           fetch-depth: 0
 
       - name: Setup pnpm

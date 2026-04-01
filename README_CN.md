@@ -73,6 +73,7 @@ bash tests/release-scripts.sh
 ```
 
 public release workflow 会先枚举 Windows 的具体产物文件，再做 smoke / upload。不要在 GitHub Actions 里继续依赖 `D:\\...` 路径上的原始通配符匹配。
+手动触发 `workflow_dispatch` 时，优先把 `head_sha` 留空。workflow 会从 `ref` 自动解析 canonical 私有源码 commit，并让所有 job 固定 checkout 到这个精确 SHA。
 
 ## 校验下载文件
 
