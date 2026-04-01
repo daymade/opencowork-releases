@@ -77,6 +77,7 @@ For manual `workflow_dispatch`, prefer leaving `head_sha` empty. The workflow re
 Keep `source_repository=daymade/opencowork` and `release_entrypoint=scripts/release/assemble-public-release.sh`. The public workflow rejects non-canonical values instead of treating them as free-form remote execution inputs.
 Do not stop at a green `release` job. The release is only complete after `verify-published-windows`, `verify-published-macos`, and `publish-release` succeed, and the run artifacts include `release-windows-x64` before aggregation begins.
 Public release assets must never include `*.map` files or public `release-metadata.json` fields like `source_repository`, `source_ref`, or `source_head_sha`.
+If a public release ships wrong assets or leaks source/private metadata, delete that public release in `opencowork-releases` and rebuild from fixed code. Do not leave the bad release published while patching forward.
 
 ## Verify a Download
 
