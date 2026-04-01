@@ -66,6 +66,8 @@ EOF
     abort("files missing") unless files.is_a?(Array) && !files.empty?
     invalid = files.reject { |entry| entry["sha256"].is_a?(String) && !entry["sha256"].empty? }
     abort("sha256 missing for: #{invalid.map { |entry| entry["path"] }.join(", ")}") unless invalid.empty?
+    forbidden = %w[source_repository source_ref source_head_sha] & metadata.keys
+    abort("public metadata leaked source fields: #{forbidden.join(", ")}") unless forbidden.empty?
   ' "$metadata_path" || fail "aggregate-release.sh wrote null sha256 values"
 }
 
@@ -187,10 +189,20 @@ test_normalize_source_head_sha() {
   fi
 }
 
+test_release_workflow_rejects_noncanonical_source_inputs() {
+  local workflow_path
+  workflow_path="$REPO_ROOT/.github/workflows/release.yml"
+  grep -q 'source_repository must remain daymade/opencowork' "$workflow_path" \
+    || fail "release workflow no longer pins the canonical source repository"
+  grep -q 'release_entrypoint must remain scripts/release/assemble-public-release.sh' "$workflow_path" \
+    || fail "release workflow no longer pins the canonical release entrypoint"
+}
+
 test_aggregate_release_populates_sha256
 test_verify_release_assets_parses_json_metadata
 test_collect_release_files_windows
 test_aggregate_release_requires_windows_artifacts
 test_normalize_source_head_sha
+test_release_workflow_rejects_noncanonical_source_inputs
 
 echo "release script tests passed"

@@ -68,21 +68,10 @@ done
 [[ -n "$RELEASE_DIR" ]] || fail "missing --release-dir"
 [[ -n "$INTERNAL_DIR" ]] || fail "missing --internal-dir"
 [[ -n "$VERSION" ]] || fail "missing --version"
-[[ -n "$SOURCE_REPOSITORY" ]] || fail "missing --source-repository"
-[[ -n "$SOURCE_REF" ]] || fail "missing --source-ref"
-[[ -n "$SOURCE_HEAD_SHA" ]] || fail "missing --source-head-sha"
-
-SOURCE_REF="${SOURCE_REF:-${RELEASE_REF:-}}"
-SOURCE_HEAD_SHA="${SOURCE_HEAD_SHA:-${RELEASE_HEAD_SHA:-}}"
-[[ -n "$SOURCE_REF" ]] || fail "missing source_ref and SOURCE_REF/RELEASE_REF"
-[[ -n "$SOURCE_HEAD_SHA" ]] || fail "missing source_head_sha and SOURCE_HEAD_SHA/RELEASE_HEAD_SHA"
 
 export RELEASE_DIR
 export INTERNAL_DIR
 export RELEASE_VERSION="$VERSION"
-export SOURCE_REPOSITORY
-export SOURCE_REF
-export SOURCE_HEAD_SHA
 
 mkdir -p "$RELEASE_DIR" "$INTERNAL_DIR"
 
@@ -106,9 +95,6 @@ require 'time'
 release_dir = ENV.fetch('RELEASE_DIR')
 internal_dir = ENV.fetch('INTERNAL_DIR')
 version = ENV.fetch('RELEASE_VERSION')
-source_repository = ENV.fetch('SOURCE_REPOSITORY')
-source_ref = ENV.fetch('SOURCE_REF')
-source_head_sha = ENV.fetch('SOURCE_HEAD_SHA')
 
 files = Dir.glob(File.join(release_dir, '*'))
   .select { |path| File.file?(path) }
@@ -130,9 +116,6 @@ metadata = {
   product_name: 'OpenCoWork',
   version: version,
   tag_name: "v#{version}",
-  source_repository: source_repository,
-  source_ref: source_ref,
-  source_head_sha: source_head_sha,
   generated_at: Time.now.utc.iso8601,
   files: files.map { |name| { path: name, sha256: checksum_map[name] } }
 }

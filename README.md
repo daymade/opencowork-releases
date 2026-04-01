@@ -74,6 +74,9 @@ bash tests/release-scripts.sh
 
 The public release workflow intentionally enumerates concrete Windows artifact files before smoke/upload. Avoid raw wildcard matching against drive-letter paths in GitHub Actions.
 For manual `workflow_dispatch`, prefer leaving `head_sha` empty. The workflow resolves the canonical private-source commit from `ref` and pins all jobs to that exact SHA.
+Keep `source_repository=daymade/opencowork` and `release_entrypoint=scripts/release/assemble-public-release.sh`. The public workflow rejects non-canonical values instead of treating them as free-form remote execution inputs.
+Do not stop at a green `release` job. The release is only complete after `verify-published-windows`, `verify-published-macos`, and `publish-release` succeed, and the run artifacts include `release-windows-x64` before aggregation begins.
+Public release assets must never include `*.map` files or public `release-metadata.json` fields like `source_repository`, `source_ref`, or `source_head_sha`.
 
 ## Verify a Download
 

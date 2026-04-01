@@ -74,6 +74,9 @@ bash tests/release-scripts.sh
 
 public release workflow 会先枚举 Windows 的具体产物文件，再做 smoke / upload。不要在 GitHub Actions 里继续依赖 `D:\\...` 路径上的原始通配符匹配。
 手动触发 `workflow_dispatch` 时，优先把 `head_sha` 留空。workflow 会从 `ref` 自动解析 canonical 私有源码 commit，并让所有 job 固定 checkout 到这个精确 SHA。
+`source_repository` 和 `release_entrypoint` 现在只保留兼容输入位，必须固定为 `daymade/opencowork` 和 `scripts/release/assemble-public-release.sh`；public workflow 会拒绝非 canonical 值。
+不要把 `release` job 变绿当成唯一成功信号。只有在 run artifacts 里出现 `release-windows-x64`，并且 `verify-published-windows`、`verify-published-macos`、`publish-release` 全部成功后，这次发布才算真正完成。
+公开 release 资产里禁止出现 `*.map`，公开 `release-metadata.json` 里也禁止继续暴露 `source_repository`、`source_ref`、`source_head_sha`。
 
 ## 校验下载文件
 

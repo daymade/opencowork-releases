@@ -15,11 +15,11 @@ on:
         description: "Version without leading v (for example 0.1.0 or 0.1.0-beta.1)"
         required: true
       source_repository:
-        description: "Private OpenCoWork source repository"
+        description: "Canonical private source repository (must remain daymade/opencowork)"
         required: false
         default: "daymade/opencowork"
       release_entrypoint:
-        description: "Assembly script path inside the private source repository"
+        description: "Canonical assembly script path inside the private source repository"
         required: false
         default: "scripts/release/assemble-public-release.sh"
       runtime_fallback_build:
@@ -93,6 +93,16 @@ jobs:
             echo "::error::Expected true or false."
             exit 1
           fi
+          if [[ -n "$SOURCE_REPOSITORY" && "$SOURCE_REPOSITORY" != "$DEFAULT_SOURCE_REPOSITORY" ]]; then
+            echo "::error::source_repository must remain daymade/opencowork"
+            exit 1
+          fi
+          if [[ -n "$RELEASE_ENTRYPOINT" && "$RELEASE_ENTRYPOINT" != "$DEFAULT_RELEASE_ENTRYPOINT" ]]; then
+            echo "::error::release_entrypoint must remain scripts/release/assemble-public-release.sh"
+            exit 1
+          fi
+          SOURCE_REPOSITORY="$DEFAULT_SOURCE_REPOSITORY"
+          RELEASE_ENTRYPOINT="$DEFAULT_RELEASE_ENTRYPOINT"
 
           if [ -z "$REF" ] || [ -z "$VERSION" ]; then
             echo "::error::ref and version are required."
@@ -134,11 +144,8 @@ jobs:
       - name: Log resolved release parameters
         run: |
           echo "resolved public release parameters:"
-          echo "  ref=${{ steps.params.outputs.ref }}"
-          echo "  head_sha=${{ steps.params.outputs.head_sha }}"
           echo "  version=${{ steps.params.outputs.version }}"
-          echo "  source_repository=${{ steps.params.outputs.source_repository }}"
-          echo "  release_entrypoint=${{ steps.params.outputs.release_entrypoint }}"
+          echo "  source_checkout_pinned=yes"
           echo "  runtime_fallback_build=${{ steps.params.outputs.runtime_fallback_build }}"
 
   submit-notarization-stage:
@@ -185,7 +192,7 @@ jobs:
           ACTUAL_SHA="$(git rev-parse HEAD)"
           EXPECTED_SHA="${{ needs.prepare.outputs.head_sha }}"
           if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" && "$ACTUAL_SHA" != "${EXPECTED_SHA}"* ]]; then
-            echo "::error::Checked out commit $ACTUAL_SHA does not match requested head_sha $EXPECTED_SHA"
+            echo "::error::Checked out commit does not match the resolved canonical source commit"
             exit 1
           fi
 
@@ -532,9 +539,7 @@ jobs:
         run: |
           echo "Windows build context:"
           echo "  version=${{ needs.prepare.outputs.version }}"
-          echo "  head_sha=${{ needs.prepare.outputs.head_sha }}"
-          echo "  source_repository=${{ needs.prepare.outputs.source_repository }}"
-          echo "  release_entrypoint=${{ needs.prepare.outputs.release_entrypoint }}"
+          echo "  source_checkout_pinned=yes"
           echo "  runtime_fallback_build=${{ needs.prepare.outputs.runtime_fallback_build }}"
           echo "  release_platform=${OPENCOWORK_RELEASE_PLATFORM}"
           echo "  release_arch=${OPENCOWORK_RELEASE_ARCH}"
@@ -691,6 +696,13 @@ jobs:
         run: |
           node scripts/run-packaged-installer-smoke-windows.cjs --release-dir "$RELEASE_DIST"
 
+      - name: Verify Windows public artifact safety
+        shell: bash
+        run: |
+          bash scripts/release/assert-public-artifact-safety.sh \
+            --release-dir "$RELEASE_DIST" \
+            --platform windows
+
       - name: Upload Windows workflow artifact
         uses: actions/upload-artifact@v7
         with:
@@ -842,9 +854,6 @@ jobs:
       - name: Generate fallback release metadata
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          RELEASE_REF: ${{ needs.prepare.outputs.ref }}
-          RELEASE_HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
-          SOURCE_REPOSITORY: ${{ needs.prepare.outputs.source_repository }}
         run: |
           ruby <<'RUBY'
           require "json"
@@ -877,9 +886,6 @@ jobs:
               product_name: "OpenCoWork",
               version: ENV.fetch("RELEASE_VERSION"),
               tag_name: "v#{ENV.fetch("RELEASE_VERSION")}",
-              source_repository: ENV.fetch("SOURCE_REPOSITORY"),
-              source_ref: ENV.fetch("RELEASE_REF"),
-              source_head_sha: ENV.fetch("RELEASE_HEAD_SHA"),
               generated_at: Time.now.utc.iso8601,
               files: files.map { |path|
                 {
@@ -911,6 +917,12 @@ jobs:
             File.write(notes_path, lines.join("\n") + "\n")
           end
           RUBY
+
+      - name: Verify macOS public artifact safety
+        run: |
+          bash scripts/release/assert-public-artifact-safety.sh \
+            --release-dir "$RELEASE_DIST" \
+            --platform macos
 
       - name: Upload macOS workflow artifact
         uses: actions/upload-artifact@v7
