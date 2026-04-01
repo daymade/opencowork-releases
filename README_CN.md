@@ -77,6 +77,8 @@ public release workflow 会先枚举 Windows 的具体产物文件，再做 smok
 `source_repository` 和 `release_entrypoint` 现在只保留兼容输入位，必须固定为 `daymade/opencowork` 和 `scripts/release/assemble-public-release.sh`；public workflow 会拒绝非 canonical 值。
 不要把 `release` job 变绿当成唯一成功信号。只有在 run artifacts 里出现 `release-windows-x64`，并且 `verify-published-windows`、`verify-published-macos`、`publish-release` 全部成功后，这次发布才算真正完成。
 公开 release 资产里禁止出现 `*.map`，公开 `release-metadata.json` 里也禁止继续暴露 `source_repository`、`source_ref`、`source_head_sha`。
+`verify-release-assets.sh` 必须是完整性校验门，而不是只检查文件存在：它要校验 `SHA256SUMS.txt`、非空 metadata `sha256`，以及 `latest.yml` / `latest-mac.yml` 里的全部引用项和 `size` / `sha512`。
+私有仓库触发 public release 时，必须以 PASS gate evidence + 已校验的 release-input digests 为前提，不能靠临时本地状态直接 dispatch。
 如果公开 release 发错了资产，或者泄露了源码/私有元数据，应当先在 `opencowork-releases` 删除这个公开 release，再从修复后的代码重新构建；不要让已知有问题的 release 挂着再边跑边补。
 
 ## 校验下载文件

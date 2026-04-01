@@ -99,7 +99,7 @@ EOF
   fi
 }
 
-test_verify_release_assets_parses_json_metadata() {
+test_verify_release_assets_enforces_hashes_and_updater_refs() {
   local tmp_dir release_dir metadata_path
   tmp_dir="$(mktemp -d)"
   release_dir="$tmp_dir/release"
@@ -108,11 +108,103 @@ test_verify_release_assets_parses_json_metadata() {
   write_file "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.dmg" "dmg"
   write_file "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.zip" "zip"
   write_file "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.zip.blockmap" "blockmap"
+  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe" "exe"
+  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe.blockmap" "winblockmap"
+  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-x64.zip" "winzip"
   cat > "$release_dir/latest-mac.yml" <<'EOF'
 version: 0.1.4-beta.2
+files:
+  - url: OpenCoWork-0.1.4-beta.2-arm64.zip
+    size: 3
+    sha512: 3EiA/5JtQzr5fFG8SzV4PjV0R8M8oWJfQvIPMFK31isLk7gb6kLZsN0a4LQf3B6VfKZH8f4sM9YhM1Yj1iQ6zQ==
+  - url: OpenCoWork-0.1.4-beta.2-arm64.dmg
+    size: 3
+    sha512: uwL+QJ9vQ7p8d6JQx6Z3lDk8PlN+9M4aZ6m9QpM8eL6k7mD8M4m4N8Yl7wGk9vGd8lW0J6MZkC1m2d1hL0ZVxA==
 path: OpenCoWork-0.1.4-beta.2-arm64.zip
-sha512: dummy
+sha512: 3EiA/5JtQzr5fFG8SzV4PjV0R8M8oWJfQvIPMFK31isLk7gb6kLZsN0a4LQf3B6VfKZH8f4sM9YhM1Yj1iQ6zQ==
 EOF
+  cat > "$release_dir/latest.yml" <<'EOF'
+version: 0.1.4-beta.2
+files:
+  - url: OpenCoWork-0.1.4-beta.2-x64.exe
+    size: 3
+    sha512: h7w2WJ4s2+I2q0DbS6S1IR0R1wP7KCKnL6g0u90soQxM7v0mF8LG4vV2JcS7i8J4lKQFq0g+qQQ7QnAz5YdYjg==
+  - url: OpenCoWork-0.1.4-beta.2-x64.exe.blockmap
+    size: 11
+    sha512: oRcs1wGULm2Z5rM8m0+2lbmV0Z1qIYBiZ2nK5yHIX4+c6Z/9bBslWz7iX+S6V1Plm4N4QdA0y+Q0r4H8iI1FrA==
+path: OpenCoWork-0.1.4-beta.2-x64.exe
+sha512: h7w2WJ4s2+I2q0DbS6S1IR0R1wP7KCKnL6g0u90soQxM7v0mF8LG4vV2JcS7i8J4lKQFq0g+qQQ7QnAz5YdYjg==
+EOF
+
+  metadata_path="$release_dir/release-metadata.json"
+  arm64_dmg_sha="$(shasum -a 256 "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.dmg" | awk '{print $1}')"
+  arm64_zip_sha="$(shasum -a 256 "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.zip" | awk '{print $1}')"
+  arm64_blockmap_sha="$(shasum -a 256 "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.zip.blockmap" | awk '{print $1}')"
+  win_exe_sha="$(shasum -a 256 "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe" | awk '{print $1}')"
+  win_blockmap_sha="$(shasum -a 256 "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe.blockmap" | awk '{print $1}')"
+  win_zip_sha="$(shasum -a 256 "$release_dir/OpenCoWork-0.1.4-beta.2-x64.zip" | awk '{print $1}')"
+  cat > "$metadata_path" <<'EOF'
+{
+  "product_name": "OpenCoWork",
+  "version": "0.1.4-beta.2",
+  "files": [
+    {
+      "path": "OpenCoWork-0.1.4-beta.2-arm64.dmg",
+      "sha256": "__ARM64_DMG_SHA__"
+    },
+    {
+      "path": "OpenCoWork-0.1.4-beta.2-arm64.zip",
+      "sha256": "__ARM64_ZIP_SHA__"
+    },
+    {
+      "path": "OpenCoWork-0.1.4-beta.2-arm64.zip.blockmap",
+      "sha256": "__ARM64_BLOCKMAP_SHA__"
+    },
+    {
+      "path": "OpenCoWork-0.1.4-beta.2-x64.exe",
+      "sha256": "__WIN_EXE_SHA__"
+    },
+    {
+      "path": "OpenCoWork-0.1.4-beta.2-x64.exe.blockmap",
+      "sha256": "__WIN_BLOCKMAP_SHA__"
+    },
+    {
+      "path": "OpenCoWork-0.1.4-beta.2-x64.zip",
+      "sha256": "__WIN_ZIP_SHA__"
+    }
+  ]
+}
+EOF
+  perl -0pi -e "s/__ARM64_DMG_SHA__/$arm64_dmg_sha/g; s/__ARM64_ZIP_SHA__/$arm64_zip_sha/g; s/__ARM64_BLOCKMAP_SHA__/$arm64_blockmap_sha/g; s/__WIN_EXE_SHA__/$win_exe_sha/g; s/__WIN_BLOCKMAP_SHA__/$win_blockmap_sha/g; s/__WIN_ZIP_SHA__/$win_zip_sha/g" "$metadata_path"
+
+  python3 - <<'PY' "$release_dir/latest-mac.yml" "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.zip" "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.dmg"
+import base64, hashlib, pathlib, re, sys
+yaml_path = pathlib.Path(sys.argv[1])
+zip_path = pathlib.Path(sys.argv[2])
+dmg_path = pathlib.Path(sys.argv[3])
+content = yaml_path.read_text()
+replacements = {
+    '3EiA/5JtQzr5fFG8SzV4PjV0R8M8oWJfQvIPMFK31isLk7gb6kLZsN0a4LQf3B6VfKZH8f4sM9YhM1Yj1iQ6zQ==': base64.b64encode(hashlib.sha512(zip_path.read_bytes()).digest()).decode(),
+    'uwL+QJ9vQ7p8d6JQx6Z3lDk8PlN+9M4aZ6m9QpM8eL6k7mD8M4m4N8Yl7wGk9vGd8lW0J6MZkC1m2d1hL0ZVxA==': base64.b64encode(hashlib.sha512(dmg_path.read_bytes()).digest()).decode(),
+}
+for old, new in replacements.items():
+    content = content.replace(old, new)
+yaml_path.write_text(content)
+PY
+  python3 - <<'PY' "$release_dir/latest.yml" "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe" "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe.blockmap"
+import base64, hashlib, pathlib, sys
+yaml_path = pathlib.Path(sys.argv[1])
+exe_path = pathlib.Path(sys.argv[2])
+blockmap_path = pathlib.Path(sys.argv[3])
+content = yaml_path.read_text()
+replacements = {
+    'h7w2WJ4s2+I2q0DbS6S1IR0R1wP7KCKnL6g0u90soQxM7v0mF8LG4vV2JcS7i8J4lKQFq0g+qQQ7QnAz5YdYjg==': base64.b64encode(hashlib.sha512(exe_path.read_bytes()).digest()).decode(),
+    'oRcs1wGULm2Z5rM8m0+2lbmV0Z1qIYBiZ2nK5yHIX4+c6Z/9bBslWz7iX+S6V1Plm4N4QdA0y+Q0r4H8iI1FrA==': base64.b64encode(hashlib.sha512(blockmap_path.read_bytes()).digest()).decode(),
+}
+for old, new in replacements.items():
+    content = content.replace(old, new)
+yaml_path.write_text(content)
+PY
 
   (
     cd "$release_dir"
@@ -120,9 +212,35 @@ EOF
     append_sha256 "OpenCoWork-0.1.4-beta.2-arm64.dmg"
     append_sha256 "OpenCoWork-0.1.4-beta.2-arm64.zip"
     append_sha256 "OpenCoWork-0.1.4-beta.2-arm64.zip.blockmap"
+    append_sha256 "OpenCoWork-0.1.4-beta.2-x64.exe"
+    append_sha256 "OpenCoWork-0.1.4-beta.2-x64.exe.blockmap"
+    append_sha256 "OpenCoWork-0.1.4-beta.2-x64.zip"
     append_sha256 "latest-mac.yml"
+    append_sha256 "latest.yml"
   )
 
+  bash "$REPO_ROOT/scripts/verify-release-assets.sh" \
+    --release-dir "$release_dir" \
+    --metadata "$metadata_path" >/dev/null || fail "verify-release-assets.sh should accept valid metadata and updater refs"
+}
+
+test_verify_release_assets_rejects_bad_checksums() {
+  local tmp_dir release_dir metadata_path
+  tmp_dir="$(mktemp -d)"
+  release_dir="$tmp_dir/release"
+  mkdir -p "$release_dir"
+
+  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.dmg" "dmg"
+  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-arm64.zip" "zip"
+  cat > "$release_dir/latest-mac.yml" <<'EOF'
+version: 0.1.4-beta.2
+path: OpenCoWork-0.1.4-beta.2-arm64.zip
+EOF
+  cat > "$release_dir/SHA256SUMS.txt" <<'EOF'
+0000000000000000000000000000000000000000000000000000000000000000  ./OpenCoWork-0.1.4-beta.2-arm64.dmg
+0000000000000000000000000000000000000000000000000000000000000000  ./OpenCoWork-0.1.4-beta.2-arm64.zip
+0000000000000000000000000000000000000000000000000000000000000000  ./latest-mac.yml
+EOF
   metadata_path="$release_dir/release-metadata.json"
   cat > "$metadata_path" <<'EOF'
 {
@@ -131,19 +249,67 @@ EOF
   "files": [
     {
       "path": "OpenCoWork-0.1.4-beta.2-arm64.dmg",
-      "sha256": null
-    },
-    {
-      "path": "OpenCoWork-0.1.4-beta.2-arm64.zip",
-      "sha256": null
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
     }
   ]
 }
 EOF
 
-  bash "$REPO_ROOT/scripts/verify-release-assets.sh" \
+  if bash "$REPO_ROOT/scripts/verify-release-assets.sh" \
     --release-dir "$release_dir" \
-    --metadata "$metadata_path" >/dev/null || fail "verify-release-assets.sh failed to parse JSON metadata"
+    --metadata "$metadata_path" >/dev/null 2>&1; then
+    fail "verify-release-assets.sh accepted bogus SHA256 data"
+  fi
+}
+
+test_verify_release_assets_rejects_missing_updater_refs() {
+  local tmp_dir release_dir metadata_path sha
+  tmp_dir="$(mktemp -d)"
+  release_dir="$tmp_dir/release"
+  mkdir -p "$release_dir"
+
+  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe" "exe"
+  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-x64.zip" "zip"
+  cat > "$release_dir/latest.yml" <<'EOF'
+version: 0.1.4-beta.2
+files:
+  - url: OpenCoWork-0.1.4-beta.2-x64.exe
+    size: 3
+  - url: OpenCoWork-0.1.4-beta.2-x64.exe.blockmap
+    size: 11
+path: OpenCoWork-0.1.4-beta.2-x64.exe
+EOF
+  (
+    cd "$release_dir"
+    : > SHA256SUMS.txt
+    append_sha256 "OpenCoWork-0.1.4-beta.2-x64.exe"
+    append_sha256 "OpenCoWork-0.1.4-beta.2-x64.zip"
+    append_sha256 "latest.yml"
+  )
+  sha="$(shasum -a 256 "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe" | awk '{print $1}')"
+  metadata_path="$release_dir/release-metadata.json"
+  cat > "$metadata_path" <<EOF
+{
+  "product_name": "OpenCoWork",
+  "version": "0.1.4-beta.2",
+  "files": [
+    {
+      "path": "OpenCoWork-0.1.4-beta.2-x64.exe",
+      "sha256": "$sha"
+    },
+    {
+      "path": "OpenCoWork-0.1.4-beta.2-x64.zip",
+      "sha256": "$(shasum -a 256 "$release_dir/OpenCoWork-0.1.4-beta.2-x64.zip" | awk '{print $1}')"
+    }
+  ]
+}
+EOF
+
+  if bash "$REPO_ROOT/scripts/verify-release-assets.sh" \
+    --release-dir "$release_dir" \
+    --metadata "$metadata_path" >/dev/null 2>&1; then
+    fail "verify-release-assets.sh accepted updater metadata with missing referenced assets"
+  fi
 }
 
 test_collect_release_files_windows() {
@@ -199,7 +365,9 @@ test_release_workflow_rejects_noncanonical_source_inputs() {
 }
 
 test_aggregate_release_populates_sha256
-test_verify_release_assets_parses_json_metadata
+test_verify_release_assets_enforces_hashes_and_updater_refs
+test_verify_release_assets_rejects_bad_checksums
+test_verify_release_assets_rejects_missing_updater_refs
 test_collect_release_files_windows
 test_aggregate_release_requires_windows_artifacts
 test_normalize_source_head_sha
