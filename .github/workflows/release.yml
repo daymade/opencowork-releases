@@ -104,11 +104,20 @@ jobs:
             exit 1
           fi
 
-          CANONICAL_HEAD_SHA="$(git ls-remote "https://x-access-token:${SOURCE_REPO_TOKEN}@github.com/${SOURCE_REPOSITORY}.git" "$REF" | awk 'NR==1 {print $1}')"
-          if [ -z "$CANONICAL_HEAD_SHA" ]; then
-            echo "::error::Unable to resolve source ref $REF in $SOURCE_REPOSITORY"
-            echo "::error::Use a branch or tag ref that exists in the private source repository."
-            exit 1
+          if [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            CANONICAL_HEAD_SHA="$(printf '%s' "$REF" | tr '[:upper:]' '[:lower:]')"
+          elif [[ "$REF" == refs/* ]]; then
+            if ! CANONICAL_HEAD_SHA="$(GH_TOKEN="$SOURCE_REPO_TOKEN" gh api "repos/$SOURCE_REPOSITORY/git/ref/${REF#refs/}" --jq .object.sha)"; then
+              echo "::error::Unable to resolve source ref $REF in $SOURCE_REPOSITORY"
+              echo "::error::Use a branch or tag ref that exists in the private source repository."
+              exit 1
+            fi
+          else
+            if ! CANONICAL_HEAD_SHA="$(GH_TOKEN="$SOURCE_REPO_TOKEN" gh api "repos/$SOURCE_REPOSITORY/commits/$REF" --jq .sha)"; then
+              echo "::error::Unable to resolve source ref $REF in $SOURCE_REPOSITORY"
+              echo "::error::Use a branch, tag, or commit SHA that exists in the private source repository."
+              exit 1
+            fi
           fi
 
           HEAD_SHA="$(bash scripts/normalize-source-head-sha.sh \
