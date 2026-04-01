@@ -49,6 +49,9 @@ jobs:
       release_entrypoint: ${{ steps.params.outputs.release_entrypoint }}
       runtime_fallback_build: ${{ steps.params.outputs.runtime_fallback_build }}
     steps:
+      - name: Checkout public release repository
+        uses: actions/checkout@v6
+
       - name: Resolve release parameters
         id: params
         env:
