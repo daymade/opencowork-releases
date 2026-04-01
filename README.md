@@ -6,6 +6,12 @@
 
 Official download repository for **OpenCoWork**.
 
+This repository is intentionally thin:
+
+- It orchestrates public CI release jobs.
+- It aggregates and verifies final release artifacts.
+- It does not own the authoritative desktop packaging, runtime-building, compliance, integrity, fuse, or smoke-test implementations. Those live in the private source repository.
+
 [![Latest Release](https://img.shields.io/github/v/release/daymade/opencowork-releases?display_name=tag&include_prereleases)](https://github.com/daymade/opencowork-releases/releases)
 ![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
 

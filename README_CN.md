@@ -6,6 +6,11 @@
 
 这是 **OpenCoWork** 的官方下载安装仓库。
 
+本仓库刻意保持精简：
+
+- 只负责 public CI 编排、最终产物聚合与校验。
+- 不承载桌面打包策略、runtime 构建、合规资源准备、完整性生成、fuse 或 smoke 实现的权威逻辑；这些都留在私有源码仓库。
+
 [![Latest Release](https://img.shields.io/github/v/release/daymade/opencowork-releases?display_name=tag&include_prereleases)](https://github.com/daymade/opencowork-releases/releases)
 ![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
 
