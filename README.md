@@ -24,7 +24,7 @@ OpenCoWork is currently available for:
 
 - macOS
 - Apple Silicon only (`arm64`, including M-series Macs)
-- Windows (`x64`) once the Windows release lane is published
+- Windows (`x64`)
 
 Intel Mac and Linux builds are not published yet.
 
@@ -79,8 +79,8 @@ bash tests/release-scripts.sh
 ```
 
 The public release workflow intentionally enumerates concrete Windows artifact files before smoke/upload. Avoid raw wildcard matching against drive-letter paths in GitHub Actions.
-For manual `workflow_dispatch`, prefer leaving `head_sha` empty. The workflow resolves the canonical private-source commit from `ref` and pins all jobs to that exact SHA.
-Keep `source_repository=daymade/opencowork` and `release_entrypoint=scripts/release/assemble-public-release.sh`. The public workflow rejects non-canonical values instead of treating them as free-form remote execution inputs.
+For manual `workflow_dispatch`, provide the exact 40-character `head_sha`. The public workflow no longer resolves or normalizes source commits from `ref`.
+The public release contract now fixes `source_repository=daymade/opencowork` and `release_entrypoint=scripts/release/assemble-public-release.sh` internally. Do not design workflows around overriding them.
 Do not stop at a green `release` job. The release is only complete after `verify-published-windows`, `verify-published-macos`, and `publish-release` succeed, and the run artifacts include `release-windows-x64` before aggregation begins.
 Public release assets must never include `*.map` files or public `release-metadata.json` fields like `source_repository`, `source_ref`, or `source_head_sha`.
 `verify-release-assets.sh` is an integrity gate, not a presence check: it must verify `SHA256SUMS.txt`, non-null metadata `sha256`, and every updater metadata reference in `latest.yml` / `latest-mac.yml`.

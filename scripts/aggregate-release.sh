@@ -85,7 +85,7 @@ find "$ARTIFACTS_DIR" -type f \( \
 
 (
   cd "$RELEASE_DIR"
-  find . -maxdepth 1 -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$RELEASE_DIR/SHA256SUMS.txt"
+  find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z | xargs -0 shasum -a 256 > "$RELEASE_DIR/SHA256SUMS.txt"
 )
 
 ruby <<'RUBY'

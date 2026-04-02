@@ -312,65 +312,30 @@ EOF
   fi
 }
 
-test_collect_release_files_windows() {
-  local tmp_dir release_dir output
-  tmp_dir="$(mktemp -d)"
-  release_dir="$tmp_dir/release"
-
-  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe" "exe"
-  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-x64.zip" "zip"
-  write_file "$release_dir/OpenCoWork-0.1.4-beta.2-x64.exe.blockmap" "blockmap"
-  write_file "$release_dir/latest.yml" "path: OpenCoWork-0.1.4-beta.2-x64.exe"
-  write_file "$release_dir/_internal/release-metadata.json" "{}"
-  write_file "$release_dir/_internal/release-notes.md" "notes"
-
-  output="$(bash "$REPO_ROOT/scripts/collect-release-files.sh" --release-dir "$release_dir" --platform windows)"
-  grep -q 'OpenCoWork-0.1.4-beta.2-x64.exe' <<<"$output" || fail "windows exe missing from collected file list"
-  grep -q 'OpenCoWork-0.1.4-beta.2-x64.zip' <<<"$output" || fail "windows zip missing from collected file list"
-  grep -q 'latest.yml' <<<"$output" || fail "windows updater metadata missing from collected file list"
-  grep -q '_internal/release-metadata.json' <<<"$output" || fail "internal metadata missing from collected file list"
-  grep -q '_internal/release-notes.md' <<<"$output" || fail "internal notes missing from collected file list"
-}
-
-test_normalize_source_head_sha() {
-  local exact prefix empty
-  exact="$(bash "$REPO_ROOT/scripts/normalize-source-head-sha.sh" \
-    --resolved-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b \
-    --requested-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b)"
-  [[ "$exact" == "517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b" ]] || fail "exact SHA normalization failed"
-
-  prefix="$(bash "$REPO_ROOT/scripts/normalize-source-head-sha.sh" \
-    --resolved-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b \
-    --requested-sha 517c04b0)"
-  [[ "$prefix" == "517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b" ]] || fail "prefix SHA normalization failed"
-
-  empty="$(bash "$REPO_ROOT/scripts/normalize-source-head-sha.sh" \
-    --resolved-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b)"
-  [[ "$empty" == "517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b" ]] || fail "empty requested SHA should resolve to canonical SHA"
-
-  if bash "$REPO_ROOT/scripts/normalize-source-head-sha.sh" \
-    --resolved-sha 517c04b0ea5e8adb150fe526b9dc4d4ee231ef4b \
-    --requested-sha 517c04b4 >/dev/null 2>&1; then
-    fail "mismatched SHA prefix should fail normalization"
-  fi
-}
-
 test_release_workflow_rejects_noncanonical_source_inputs() {
   local workflow_path
   workflow_path="$REPO_ROOT/.github/workflows/release.yml"
-  grep -q 'source_repository must remain daymade/opencowork' "$workflow_path" \
+  grep -q 'head_sha must be the exact 40-character source commit SHA' "$workflow_path" \
+    || fail "release workflow no longer enforces exact source head_sha input"
+  grep -q 'DEFAULT_SOURCE_REPOSITORY: daymade/opencowork' "$workflow_path" \
     || fail "release workflow no longer pins the canonical source repository"
-  grep -q 'release_entrypoint must remain scripts/release/assemble-public-release.sh' "$workflow_path" \
+  grep -q 'DEFAULT_RELEASE_ENTRYPOINT: scripts/release/assemble-public-release.sh' "$workflow_path" \
     || fail "release workflow no longer pins the canonical release entrypoint"
+  grep -q 'scripts/release/collect-release-files.sh' "$workflow_path" \
+    || fail "release workflow no longer uses the source-repo release file enumerator"
+  if grep -q 'release-tools/scripts/collect-release-files.sh' "$workflow_path"; then
+    fail "release workflow still depends on a public-repo artifact enumerator"
+  fi
+  if grep -q 'scripts/normalize-source-head-sha.sh' "$workflow_path"; then
+    fail "release workflow still depends on normalize-source-head-sha.sh"
+  fi
 }
 
 test_aggregate_release_populates_sha256
 test_verify_release_assets_enforces_hashes_and_updater_refs
 test_verify_release_assets_rejects_bad_checksums
 test_verify_release_assets_rejects_missing_updater_refs
-test_collect_release_files_windows
 test_aggregate_release_requires_windows_artifacts
-test_normalize_source_head_sha
 test_release_workflow_rejects_noncanonical_source_inputs
 
 echo "release script tests passed"

@@ -9,19 +9,11 @@ on:
         description: "Git ref (tag or branch) in the private source repo"
         required: true
       head_sha:
-        description: "Optional exact source commit SHA or prefix; leave empty to resolve from ref automatically"
-        required: false
+        description: "Exact 40-character source commit SHA to build"
+        required: true
       version:
         description: "Version without leading v (for example 0.1.0 or 0.1.0-beta.1)"
         required: true
-      source_repository:
-        description: "Canonical private source repository (must remain daymade/opencowork)"
-        required: false
-        default: "daymade/opencowork"
-      release_entrypoint:
-        description: "Canonical assembly script path inside the private source repository"
-        required: false
-        default: "scripts/release/assemble-public-release.sh"
       runtime_fallback_build:
         description: "Emergency mode: build runtime bundles in public release jobs instead of requiring prepublished source runtime assets"
         required: false
@@ -57,14 +49,8 @@ jobs:
         env:
           DEFAULT_SOURCE_REPOSITORY: daymade/opencowork
           DEFAULT_RELEASE_ENTRYPOINT: scripts/release/assemble-public-release.sh
-          SOURCE_REPO_TOKEN: ${{ secrets.OPENCOWORK_SOURCE_REPO_TOKEN }}
           PAYLOAD_HEAD_SHA_SNAKE: ${{ github.event.client_payload.head_sha }}
           PAYLOAD_HEAD_SHA_CAMEL: ${{ github.event.client_payload.headSha }}
-          PAYLOAD_SOURCE_REPOSITORY_SNAKE: ${{ github.event.client_payload.source_repository }}
-          PAYLOAD_SOURCE_REPOSITORY_CAMEL: ${{ github.event.client_payload.sourceRepository }}
-          PAYLOAD_SOURCE_REPOSITORY_SHORT: ${{ github.event.client_payload.sourceRepo }}
-          PAYLOAD_RELEASE_ENTRYPOINT_SNAKE: ${{ github.event.client_payload.release_entrypoint }}
-          PAYLOAD_RELEASE_ENTRYPOINT_CAMEL: ${{ github.event.client_payload.releaseEntrypoint }}
           PAYLOAD_RUNTIME_FALLBACK_BUILD: ${{ github.event.client_payload.runtime_fallback_build }}
           PAYLOAD_RUNTIME_FALLBACK_BUILD_CAMEL: ${{ github.event.client_payload.runtimeFallbackBuild }}
         run: |
@@ -72,67 +58,32 @@ jobs:
             REF="${{ github.event.client_payload.ref }}"
             HEAD_SHA="${PAYLOAD_HEAD_SHA_SNAKE:-$PAYLOAD_HEAD_SHA_CAMEL}"
             VERSION="${{ github.event.client_payload.version }}"
-            SOURCE_REPOSITORY="${PAYLOAD_SOURCE_REPOSITORY_SNAKE:-$PAYLOAD_SOURCE_REPOSITORY_CAMEL}"
-            SOURCE_REPOSITORY="${SOURCE_REPOSITORY:-$PAYLOAD_SOURCE_REPOSITORY_SHORT}"
-            RELEASE_ENTRYPOINT="${PAYLOAD_RELEASE_ENTRYPOINT_SNAKE:-$PAYLOAD_RELEASE_ENTRYPOINT_CAMEL}"
             RUNTIME_FALLBACK_BUILD="${PAYLOAD_RUNTIME_FALLBACK_BUILD:-${PAYLOAD_RUNTIME_FALLBACK_BUILD_CAMEL:-true}}"
           else
             REF="${{ inputs.ref }}"
             HEAD_SHA="${{ inputs.head_sha }}"
             VERSION="${{ inputs.version }}"
-            SOURCE_REPOSITORY="${{ inputs.source_repository }}"
-            RELEASE_ENTRYPOINT="${{ inputs.release_entrypoint }}"
             RUNTIME_FALLBACK_BUILD="${{ inputs.runtime_fallback_build }}"
           fi
 
-          SOURCE_REPOSITORY="${SOURCE_REPOSITORY:-$DEFAULT_SOURCE_REPOSITORY}"
-          RELEASE_ENTRYPOINT="${RELEASE_ENTRYPOINT:-$DEFAULT_RELEASE_ENTRYPOINT}"
+          SOURCE_REPOSITORY="$DEFAULT_SOURCE_REPOSITORY"
+          RELEASE_ENTRYPOINT="$DEFAULT_RELEASE_ENTRYPOINT"
           RUNTIME_FALLBACK_BUILD="$(printf '%s' "$RUNTIME_FALLBACK_BUILD" | tr '[:upper:]' '[:lower:]')"
           if [[ "$RUNTIME_FALLBACK_BUILD" != "true" && "$RUNTIME_FALLBACK_BUILD" != "false" ]]; then
             echo "::error::Invalid runtime_fallback_build value: $RUNTIME_FALLBACK_BUILD"
             echo "::error::Expected true or false."
             exit 1
           fi
-          if [[ -n "$SOURCE_REPOSITORY" && "$SOURCE_REPOSITORY" != "$DEFAULT_SOURCE_REPOSITORY" ]]; then
-            echo "::error::source_repository must remain daymade/opencowork"
-            exit 1
-          fi
-          if [[ -n "$RELEASE_ENTRYPOINT" && "$RELEASE_ENTRYPOINT" != "$DEFAULT_RELEASE_ENTRYPOINT" ]]; then
-            echo "::error::release_entrypoint must remain scripts/release/assemble-public-release.sh"
-            exit 1
-          fi
-          SOURCE_REPOSITORY="$DEFAULT_SOURCE_REPOSITORY"
-          RELEASE_ENTRYPOINT="$DEFAULT_RELEASE_ENTRYPOINT"
 
-          if [ -z "$REF" ] || [ -z "$VERSION" ]; then
-            echo "::error::ref and version are required."
+          if [ -z "$REF" ] || [ -z "$VERSION" ] || [ -z "$HEAD_SHA" ]; then
+            echo "::error::ref, head_sha, and version are required."
             exit 1
           fi
 
-          if [ -z "${SOURCE_REPO_TOKEN:-}" ]; then
-            echo "::error::OPENCOWORK_SOURCE_REPO_TOKEN is required to resolve the source ref."
+          if ! [[ "$HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::head_sha must be the exact 40-character source commit SHA."
             exit 1
           fi
-
-          if [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            CANONICAL_HEAD_SHA="$(printf '%s' "$REF" | tr '[:upper:]' '[:lower:]')"
-          elif [[ "$REF" == refs/* ]]; then
-            if ! CANONICAL_HEAD_SHA="$(GH_TOKEN="$SOURCE_REPO_TOKEN" gh api "repos/$SOURCE_REPOSITORY/git/ref/${REF#refs/}" --jq .object.sha)"; then
-              echo "::error::Unable to resolve source ref $REF in $SOURCE_REPOSITORY"
-              echo "::error::Use a branch or tag ref that exists in the private source repository."
-              exit 1
-            fi
-          else
-            if ! CANONICAL_HEAD_SHA="$(GH_TOKEN="$SOURCE_REPO_TOKEN" gh api "repos/$SOURCE_REPOSITORY/commits/$REF" --jq .sha)"; then
-              echo "::error::Unable to resolve source ref $REF in $SOURCE_REPOSITORY"
-              echo "::error::Use a branch, tag, or commit SHA that exists in the private source repository."
-              exit 1
-            fi
-          fi
-
-          HEAD_SHA="$(bash scripts/normalize-source-head-sha.sh \
-            --resolved-sha "$CANONICAL_HEAD_SHA" \
-            --requested-sha "${HEAD_SHA:-}")"
 
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
@@ -668,19 +619,13 @@ jobs:
           fi
           bash "$ENTRYPOINT" "${ENTRYPOINT_ARGS[@]}"
 
-      - name: Checkout public release tools
-        uses: actions/checkout@v6
-        with:
-          path: release-tools
-          ref: ${{ github.sha }}
-
       - name: Stage Windows workflow artifact files
         shell: bash
         run: |
           rm -rf "$WINDOWS_ARTIFACT_UPLOAD_DIR"
           mkdir -p "$WINDOWS_ARTIFACT_UPLOAD_DIR"
 
-          mapfile -t WINDOWS_ARTIFACTS < <(bash release-tools/scripts/collect-release-files.sh --release-dir "$RELEASE_DIST" --platform windows)
+          mapfile -t WINDOWS_ARTIFACTS < <(bash scripts/release/collect-release-files.sh --release-dir "$RELEASE_DIST" --platform windows)
           echo "artifact snapshot before Windows installer smoke:"
           printf '%s\n' "${WINDOWS_ARTIFACTS[@]}"
 

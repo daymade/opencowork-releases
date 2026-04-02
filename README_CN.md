@@ -23,7 +23,7 @@
 
 - macOS
 - Apple Silicon（`arm64`，即 M 系列芯片）
-- Windows（`x64`，待 Windows release lane 发布后提供）
+- Windows（`x64`）
 
 暂未提供 Intel Mac 和 Linux 版本。
 
@@ -78,8 +78,8 @@ bash tests/release-scripts.sh
 ```
 
 public release workflow 会先枚举 Windows 的具体产物文件，再做 smoke / upload。不要在 GitHub Actions 里继续依赖 `D:\\...` 路径上的原始通配符匹配。
-手动触发 `workflow_dispatch` 时，优先把 `head_sha` 留空。workflow 会从 `ref` 自动解析 canonical 私有源码 commit，并让所有 job 固定 checkout 到这个精确 SHA。
-`source_repository` 和 `release_entrypoint` 现在只保留兼容输入位，必须固定为 `daymade/opencowork` 和 `scripts/release/assemble-public-release.sh`；public workflow 会拒绝非 canonical 值。
+手动触发 `workflow_dispatch` 时，必须显式提供精确的 40 位 `head_sha`。public workflow 不再根据 `ref` 自动解析或规范化源码 commit。
+public release contract 现在在内部固定 `source_repository=daymade/opencowork` 和 `release_entrypoint=scripts/release/assemble-public-release.sh`；不要再围绕可覆盖输入设计发布流程。
 不要把 `release` job 变绿当成唯一成功信号。只有在 run artifacts 里出现 `release-windows-x64`，并且 `verify-published-windows`、`verify-published-macos`、`publish-release` 全部成功后，这次发布才算真正完成。
 公开 release 资产里禁止出现 `*.map`，公开 `release-metadata.json` 里也禁止继续暴露 `source_repository`、`source_ref`、`source_head_sha`。
 `verify-release-assets.sh` 必须是完整性校验门，而不是只检查文件存在：它要校验 `SHA256SUMS.txt`、非空 metadata `sha256`，以及 `latest.yml` / `latest-mac.yml` 里的全部引用项和 `size` / `sha512`。
