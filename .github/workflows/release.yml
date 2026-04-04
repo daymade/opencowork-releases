@@ -99,7 +99,7 @@ jobs:
           echo "  source_checkout_pinned=yes"
           echo "  runtime_fallback_build=${{ steps.params.outputs.runtime_fallback_build }}"
 
-  submit-notarization-stage:
+  build-macos:
     needs: prepare
     runs-on: macos-14
     timeout-minutes: 240
@@ -146,6 +146,17 @@ jobs:
             echo "::error::Checked out commit does not match the resolved canonical source commit"
             exit 1
           fi
+
+
+      - name: Free macOS runner disk
+        run: |
+          rm -rf "$HOME/Library/Developer/Xcode/DerivedData" || true
+          rm -rf "$HOME/Library/Developer/CoreSimulator/Caches" || true
+          rm -rf "$HOME/Library/Developer/CoreSimulator/Devices" || true
+          rm -rf "$HOME/Library/Caches/Homebrew" || true
+          rm -rf "$HOME/.cache/ms-playwright" || true
+          ulimit -n 65536
+          df -h
 
       - name: Restore Electron downloads cache
         id: electron-cache-restore
@@ -241,7 +252,7 @@ jobs:
           key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
 
   release:
-    needs: [prepare, resume-release-assets, build-windows-release]
+    needs: [prepare, resume-notarize, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -420,7 +431,7 @@ jobs:
             "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
             -F draft=false >/dev/null
 
-  build-windows-release:
+  build-windows:
     needs: prepare
     runs-on: windows-latest
     timeout-minutes: 240
@@ -663,8 +674,8 @@ jobs:
           path: ~/.cache/electron
           key: ${{ runner.os }}-electron-${{ needs.prepare.outputs.version }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
 
-  resume-release-assets:
-    needs: [prepare, submit-notarization-stage]
+  resume-notarize:
+    needs: [prepare, build-macos]
     runs-on: macos-14
     timeout-minutes: 360
     env:
